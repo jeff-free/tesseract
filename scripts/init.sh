@@ -59,11 +59,11 @@ if [[ -f "$SKILL_SRC" ]]; then
     fi
 fi
 
-# 建立預設 akasha domain（如果不存在）
-AKASHA_DIR="$DOMAINS_PATH/akasha"
-if [[ ! -d "$AKASHA_DIR" ]]; then
-    bash "$(dirname "$0")/new-domain.sh" "akasha" --no-prompt
-    echo "✓ 已建立預設 domain：akasha（個人通用知識庫）"
+# 建立預設 tesseract domain（個人通用知識庫）
+TESSERACT_DOMAIN_DIR="$DOMAINS_PATH/tesseract"
+if [[ ! -d "$TESSERACT_DOMAIN_DIR" ]]; then
+    bash "$(dirname "$0")/new-domain.sh" "tesseract" --no-prompt
+    echo "✓ 已建立預設 domain：tesseract（個人通用知識庫）"
 fi
 
 echo ""
