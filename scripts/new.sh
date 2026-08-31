@@ -16,10 +16,9 @@ if [[ -f "$CONFIG_FILE" ]]; then
     source "$CONFIG_FILE"
 fi
 TESSERACT_DOMAINS="${TESSERACT_DOMAINS:-$HOME/Library/Mobile Documents/com~apple~CloudDocs/Tesseract}"
-TESSERACT_PROJECTS="${TESSERACT_PROJECTS:-$HOME/Documents}"
 
 PROJECT_NAME="$1"
-PROJECT_PATH="${2:-$TESSERACT_PROJECTS/$PROJECT_NAME}"
+PROJECT_PATH="${2:-$(pwd)/$PROJECT_NAME}"
 PROJECT_PATH="${PROJECT_PATH/#\~/$HOME}"
 
 echo "=== 建立新專案：$PROJECT_NAME ==="

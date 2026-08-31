@@ -28,22 +28,12 @@ DOMAINS_PATH="${input_domains:-$DEFAULT_DOMAINS}"
 DOMAINS_PATH="${DOMAINS_PATH/#\~/$HOME}"
 mkdir -p "$DOMAINS_PATH"
 
-# 設定 projects 路徑（產出，預設 ~/Documents）
-DEFAULT_PROJECTS="$HOME/Documents"
-echo ""
-echo "專案資料夾根路徑（預設：$DEFAULT_PROJECTS）"
-read -rp "請輸入路徑，或直接按 Enter 使用預設值: " input_projects
-PROJECTS_PATH="${input_projects:-$DEFAULT_PROJECTS}"
-PROJECTS_PATH="${PROJECTS_PATH/#\~/$HOME}"
-mkdir -p "$PROJECTS_PATH"
-
 # 寫入設定檔
 cat > "$CONFIG_FILE" <<EOF
 # Tesseract 設定檔
 # 由 tesseract init 自動產生
 TESSERACT_HOME="$TESSERACT_HOME"
 TESSERACT_DOMAINS="$DOMAINS_PATH"
-TESSERACT_PROJECTS="$PROJECTS_PATH"
 EOF
 
 echo ""
