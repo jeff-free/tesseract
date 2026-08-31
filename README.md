@@ -94,20 +94,6 @@ tesseract reindex
 
 ---
 
-## Git 版控
-
-建議對整個 `tesseract/domains/` 資料夾進行 git 版控：
-
-```bash
-cd ~/Documents/tesseract
-git init
-echo "domains/*/assets/*.mp4" >> .gitignore
-git add .
-git commit -m "init: Tesseract 初始化"
-```
-
----
-
 ## Skill 使用說明
 
 安裝後，在任何有 `.tesseract/` symlink 的專案中使用 Claude Code，Claude 會自動：
