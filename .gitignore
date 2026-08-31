@@ -6,3 +6,6 @@ domains/*/assets/*.mkv
 
 # macOS
 .DS_Store
+
+# Tesseract symlink（由 tesseract link 自動建立，不應進 git）
+.tesseract
