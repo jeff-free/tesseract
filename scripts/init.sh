@@ -20,8 +20,8 @@ if [[ -f "$CONFIG_FILE" ]]; then
     fi
 fi
 
-# 設定 domains 路徑
-DEFAULT_DOMAINS="$TESSERACT_HOME/domains"
+# 設定 domains 路徑（預設放在 iCloud Drive）
+DEFAULT_DOMAINS="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Tesseract"
 echo "Domains 資料夾路徑（預設：$DEFAULT_DOMAINS）"
 read -rp "請輸入路徑，或直接按 Enter 使用預設值: " input_domains
 DOMAINS_PATH="${input_domains:-$DEFAULT_DOMAINS}"

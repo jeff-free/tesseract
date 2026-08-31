@@ -3,7 +3,7 @@
 
 此專案連結了 Tesseract domain：**tesseract**
 
-知識庫路徑：`/Users/jfree/Documents/tesseract/domains/tesseract`
+知識庫路徑：`/Users/jfree/Library/Mobile Documents/com~apple~CloudDocs/Tesseract/tesseract`
 本機 symlink：`.tesseract/`（在此專案根目錄）
 
 ## 使用規則

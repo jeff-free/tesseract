@@ -30,10 +30,23 @@ Tesseract 是一個以「知識與產出分離」為核心的個人知識管理�
     CLAUDE.md.snippet  ← 自動寫入專案 CLAUDE.md 的片段
   skills/
     tesseract.md       ← Claude Code skill（需安裝）
-  domains/
-    tesseract/         ← 個人通用知識庫（預設 domain）
-      index.md
-      assets/
+```
+
+**知識資料**（`iCloud Drive/Tesseract/`）：
+```
+Tesseract/
+  tesseract/           ← 個人通用知識庫（預設 domain）
+    index.md
+    assets/
+  <其他 domain>/
+    index.md
+    assets/
+```
+
+**專案中**：
+```
+my-project/
+  .tesseract/  →  ln -s  →  iCloud/Tesseract/<domain>/
 ```
 
 ---
