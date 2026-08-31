@@ -1,0 +1,8 @@
+# 大型媒體檔案
+domains/*/assets/*.mp4
+domains/*/assets/*.mov
+domains/*/assets/*.avi
+domains/*/assets/*.mkv
+
+# macOS
+.DS_Store
