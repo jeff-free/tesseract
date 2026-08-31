@@ -20,17 +20,22 @@ if [[ -f "$CONFIG_FILE" ]]; then
     fi
 fi
 
-# 設定 domains 路徑（預設放在 iCloud Drive）
+# 設定 domains 路徑（知識庫，預設放在 iCloud Drive）
 DEFAULT_DOMAINS="$HOME/Library/Mobile Documents/com~apple~CloudDocs/Tesseract"
-echo "Domains 資料夾路徑（預設：$DEFAULT_DOMAINS）"
+echo "知識庫路徑（iCloud，預設：$DEFAULT_DOMAINS）"
 read -rp "請輸入路徑，或直接按 Enter 使用預設值: " input_domains
 DOMAINS_PATH="${input_domains:-$DEFAULT_DOMAINS}"
-
-# 展開 ~
 DOMAINS_PATH="${DOMAINS_PATH/#\~/$HOME}"
-
-# 建立 domains 資料夾
 mkdir -p "$DOMAINS_PATH"
+
+# 設定 projects 路徑（產出，預設 ~/Documents）
+DEFAULT_PROJECTS="$HOME/Documents"
+echo ""
+echo "專案資料夾根路徑（預設：$DEFAULT_PROJECTS）"
+read -rp "請輸入路徑，或直接按 Enter 使用預設值: " input_projects
+PROJECTS_PATH="${input_projects:-$DEFAULT_PROJECTS}"
+PROJECTS_PATH="${PROJECTS_PATH/#\~/$HOME}"
+mkdir -p "$PROJECTS_PATH"
 
 # 寫入設定檔
 cat > "$CONFIG_FILE" <<EOF
@@ -38,6 +43,7 @@ cat > "$CONFIG_FILE" <<EOF
 # 由 tesseract init 自動產生
 TESSERACT_HOME="$TESSERACT_HOME"
 TESSERACT_DOMAINS="$DOMAINS_PATH"
+TESSERACT_PROJECTS="$PROJECTS_PATH"
 EOF
 
 echo ""

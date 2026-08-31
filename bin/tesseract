@@ -8,12 +8,13 @@ usage() {
     echo "用法: tesseract <指令> [參數]"
     echo ""
     echo "指令:"
-    echo "  init                  初始化 Tesseract 設定"
-    echo "  new-domain <名稱>     建立新的知識 domain"
-    echo "  link <專案路徑> <domain>  將 domain 連結到專案"
-    echo "  status                列出所有 domain 與連結狀態"
-    echo "  reindex               重新產生各 domain 的 summary.md"
-    echo "  help                  顯示此說明"
+    echo "  init                       初始化 Tesseract 設定"
+    echo "  new <名稱> [路徑]          建立專案資料夾 + iCloud 知識庫 + 連結（一步完成）"
+    echo "  link <專案路徑> <domain>   將現有專案連結到現有知識 domain"
+    echo "  new-domain <名稱>          僅建立 iCloud 知識 domain（進階用）"
+    echo "  status                     列出所有 domain 與連結狀態"
+    echo "  reindex                    重新產生各 domain 的 summary.md"
+    echo "  help                       顯示此說明"
 }
 
 command="${1:-help}"
@@ -21,6 +22,7 @@ shift || true
 
 case "$command" in
     init)        bash "$SCRIPTS_DIR/init.sh" "$@" ;;
+    new)         bash "$SCRIPTS_DIR/new.sh" "$@" ;;
     new-domain)  bash "$SCRIPTS_DIR/new-domain.sh" "$@" ;;
     link)        bash "$SCRIPTS_DIR/link.sh" "$@" ;;
     status)      bash "$SCRIPTS_DIR/status.sh" "$@" ;;
