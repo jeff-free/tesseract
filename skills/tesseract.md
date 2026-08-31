@@ -2,14 +2,14 @@
 
 ## 觸發條件
 
-當你在某個專案中工作，並且該專案根目錄存在 `.tesseract/` 資料夾（symlink），此 skill 自動生效。
+當你在某個專案中工作，並且該專案根目錄存在 `tesseract/` 資料夾（symlink），此 skill 自動生效。
 
 ---
 
 ## 工作前：讀取知識庫
 
-1. 讀取 `.tesseract/index.md`
-   - 若 context 已很緊張，且存在 `.tesseract/summary.md`，改讀 summary
+1. 讀取 `tesseract/index.md`
+   - 若 context 已很緊張，且存在 `tesseract/summary.md`，改讀 summary
 2. 簡短告知使用者已載入哪個 domain 的知識（一句話即可）
 
 ---
@@ -63,7 +63,7 @@
 
 ## 人工介入提示
 
-若使用者在 IDE 中直接修改了 `.tesseract/index.md`（而非透過 AI），在下次工作時你會看到不同版本的內容。這是正常的——使用者有權直接修正 AI 寫入的知識。直接基於最新版本繼續工作即可。
+若使用者在 IDE 中直接修改了 `tesseract/index.md`（而非透過 AI），在下次工作時你會看到不同版本的內容。這是正常的——使用者有權直接修正 AI 寫入的知識。直接基於最新版本繼續工作即可。
 
 ---
 

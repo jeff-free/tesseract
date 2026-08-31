@@ -46,7 +46,7 @@ Tesseract/
 **專案中**：
 ```
 my-project/
-  .tesseract/  →  ln -s  →  iCloud/Tesseract/<domain>/
+  tesseract/  →  ln -s  →  iCloud/Tesseract/<domain>/
 ```
 
 ---
@@ -77,7 +77,7 @@ tesseract new-domain product
 # 將 domain 連結到專案
 cd ~/code/my-project
 tesseract link . product
-# → 在專案根目錄建立 .tesseract/ symlink
+# → 在專案根目錄建立 tesseract/ symlink
 # → 自動更新專案的 CLAUDE.md
 
 # 查看目前所有連結
@@ -103,14 +103,14 @@ tesseract reindex
 
 ## Symlink 的用途
 
-`tesseract link` 在專案中建立 `.tesseract/` symlink，使 IDE（如 VS Code、RubyMine）可以在 file tree 中看到知識資料夾，讓使用者能直接手動修正 AI 寫入的內容，而不需要另外開啟 iCloud 資料夾。
+`tesseract link` 在專案中建立 `tesseract/` symlink，使 IDE（如 VS Code、RubyMine）可以在 file tree 中看到知識資料夾，讓使用者能直接手動修正 AI 寫入的內容，而不需要另外開啟 iCloud 資料夾。
 
 ---
 
 ## Skill 使用說明
 
-安裝後，在任何有 `.tesseract/` symlink 的專案中使用 Claude Code，Claude 會自動：
-1. 讀取 `.tesseract/index.md` 作為工作前置知識
+安裝後，在任何有 `tesseract/` symlink 的專案中使用 Claude Code，Claude 會自動：
+1. 讀取 `tesseract/index.md` 作為工作前置知識
 2. 工作結束後更新知識庫並寫入 Changelog
 
 可以在對話中直接告訴 Claude：「更新 Tesseract」或「把這個記錄到知識庫」。

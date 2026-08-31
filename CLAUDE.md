@@ -4,13 +4,13 @@
 此專案連結了 Tesseract domain：**tesseract**
 
 知識庫路徑：`/Users/jfree/Library/Mobile Documents/com~apple~CloudDocs/Tesseract/tesseract`
-本機 symlink：`.tesseract/`（在此專案根目錄）
+本機 symlink：`tesseract/`（在此專案根目錄）
 
 ## 使用規則
 
-1. 工作開始前，讀取 `.tesseract/index.md` 取得背景知識
-   - 若 context 緊張且存在 `.tesseract/summary.md`，優先讀 summary
-2. 工作結束時（或使用者說「完成」、「更新知識庫」），更新 `.tesseract/index.md`：
+1. 工作開始前，讀取 `tesseract/index.md` 取得背景知識
+   - 若 context 緊張且存在 `tesseract/summary.md`，優先讀 summary
+2. 工作結束時（或使用者說「完成」、「更新知識庫」），更新 `tesseract/index.md`：
    - 在 `## Knowledge` 新增或精煉洞見（不刪除既有內容）
    - 在 `## User Preferences` 記錄新觀察到的使用者習慣
    - 在 `## Changelog` **最下方** append 一行：`- YYYY-MM-DD: 簡短說明（AI）`

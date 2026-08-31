@@ -22,7 +22,7 @@ else
 fi
 
 DOMAIN_DIR="$TESSERACT_DOMAINS/$DOMAIN_NAME"
-LINK_PATH="$PROJECT_PATH/.tesseract"
+LINK_PATH="$PROJECT_PATH/tesseract"
 
 # 確認 domain 存在
 if [[ ! -d "$DOMAIN_DIR" ]]; then
@@ -38,7 +38,7 @@ if [[ -L "$LINK_PATH" ]]; then
         echo "✓ Symlink 已存在且指向正確的 domain"
         exit 0
     else
-        echo "警告：.tesseract 已連結到 $EXISTING"
+        echo "警告：tesseract 已連結到 $EXISTING"
         read -rp "是否更新連結到 $DOMAIN_DIR？[y/N] " answer
         if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
             echo "取消，保留現有連結。"
