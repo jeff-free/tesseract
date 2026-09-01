@@ -13,33 +13,207 @@ Tesseract 是一個以「知識與產出分離」為核心的個人知識管理�
 
 ---
 
+## 系統全景
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         使用者的機器                             │
+│                                                                 │
+│  ┌─────────────────────────┐    ┌──────────────────────────┐   │
+│  │   ~/Documents/tesseract │    │   iCloud Drive/Tesseract │   │
+│  │   （此 repo，工具箱）    │    │   （知識資料，同步備份） │   │
+│  │                         │    │                          │   │
+│  │  bin/tesseract  ←────── │────│──► new-domain.sh         │   │
+│  │  scripts/               │    │    建立 domain 資料夾     │   │
+│  │  adapters/              │    │                          │   │
+│  │  skills/                │    │  tesseract/              │   │
+│  │  templates/             │    │    index.md              │   │
+│  └─────────────────────────┘    │    <topic>.md            │   │
+│                                 │    assets/               │   │
+│                                 │                          │   │
+│                                 │  product/                │   │
+│                                 │    index.md              │   │
+│                                 │    <topic>.md            │   │
+│                                 └──────────────────────────┘   │
+│                                           ▲                     │
+│                        symlink            │                     │
+│  ~/code/my-project/tesseract/ ───────────┘                     │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 初始化與安裝流程
+
+```
+使用者執行：
+
+  1. echo 'export PATH=...' >> ~/.zshrc      # 加 CLI 到 PATH
+  2. tesseract init                           # 建立 ~/.tesseractrc
+  3. tesseract install-adapters               # 安裝 global skill
+
+            └─► ~/.claude/skills/tesseract.md  (Claude adapter)
+                ~/.tesseractrc                  (設定檔)
+                  TESSERACT_DOMAINS=~/iCloud/Tesseract
+                  TESSERACT_ADAPTERS=claude
+```
+
+---
+
+## Domain 建立與專案連結
+
+```
+tesseract new <名稱> [路徑]        ← 一步完成（推薦）
+  │
+  ├─► 在 ~/code/ 建立專案資料夾
+  ├─► 在 iCloud/Tesseract/<名稱>/ 建立 domain
+  └─► 執行 link（見下方）
+
+─────────────────────────────────────────────────
+
+tesseract link <專案路徑> <domain>  ← 連結現有專案到現有 domain
+  │
+  ├─► 建立 symlink
+  │     <專案>/tesseract/ ──→ iCloud/Tesseract/<domain>/
+  │
+  └─► 寫入 adapter 片段到 <專案>/CLAUDE.md
+        <!-- tesseract-start -->
+          domain 名稱、路徑、使用規則
+        <!-- tesseract-end -->
+
+結果：IDE file tree 中可見知識資料夾，AI 也收到操作規則
+```
+
+---
+
+## Adapter 系統
+
+```
+adapters/
+  _behavior.md          ← 唯一真實來源（所有 AI 的行為規範）
+       │
+       ├─► adapters/claude/
+       │     meta.sh              (ADAPTER_FILENAME=CLAUDE.md)
+       │     project-snippet.md   (寫入專案的片段，含 {{DOMAIN_NAME}} 變數)
+       │     global-skill.md      (安裝到 ~/.claude/skills/)
+       │
+       └─► adapters/gemini/
+             meta.sh
+             project-snippet.md
+
+install-adapters.sh 讀取 TESSERACT_ADAPTERS=claude,gemini
+  → 對每個 adapter 執行對應的安裝步驟
+```
+
+---
+
+## AI 工作時的讀寫循環
+
+```
+AI 收到任務
+     │
+     ▼
+┌─────────────────────────────────┐
+│  工作前（載入知識）              │
+│                                 │
+│  1. 讀 tesseract/index.md       │
+│     → 看 ## Files 有哪些主題    │
+│  2. 讀相關的 <topic>.md         │
+│  3. 告知使用者已載入哪個 domain  │
+└────────────────┬────────────────┘
+                 │
+                 ▼
+           執行實際工作
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│  主動強化（不等使用者）          │
+│                                 │
+│  觸發條件：                     │
+│  • 設計/架構決策確定             │
+│  • 問題解決（根因、workaround）  │
+│  • 觀察到使用者偏好              │
+│  • 對話中出現重要洞見            │
+│                                 │
+│  步驟：                         │
+│  1. 找 index.md ## Files        │
+│     → 找到 → 更新 <topic>.md    │
+│     → 找不到 → 新增 <topic>.md  │
+│  2. 若新增：在 index.md         │
+│     ## Files 加一行              │
+│  3. 在 index.md ## Changelog    │
+│     最下方 append 一行           │
+└─────────────────────────────────┘
+```
+
+---
+
+## Domain 內部結構
+
+```
+iCloud/Tesseract/<domain>/
+│
+├── index.md                    ← 索引（只存目錄，不存知識內容）
+│   │
+│   ├── ## Context              ← 此 domain 的目的與範疇
+│   ├── ## Files                ← 知識檔清單
+│   │     - [[topic-a]] — 說明 #tag
+│   │     - [[topic-b]] — 說明 #tag
+│   └── ## Changelog            ← Append-only，不得刪除
+│         - 2026-01-01: 說明（AI）
+│
+├── topic-a.md                  ← 知識本體（一主題一檔案）
+│   ├── #tag 主題標記
+│   └── [[topic-b]] 跨檔連結
+│
+├── topic-b.md
+└── assets/                     ← 圖片等附件
+```
+
+---
+
 ## 目錄結構
 
 ```
-~/Documents/tesseract/
+~/Documents/tesseract/          ← 此 repo（工具箱）
   bin/
-    tesseract          ← CLI 主入口
+    tesseract                   ← CLI 主入口
   scripts/
-    init.sh            ← 初始化設定
-    new-domain.sh      ← 建立新 domain
-    link.sh            ← 連結 domain 到專案
-    status.sh          ← 查看所有連結狀態
-    reindex.sh         ← 重新產生各 domain 的 summary.md
+    init.sh                     ← 初始化設定（建立 ~/.tesseractrc）
+    new.sh                      ← 一步建立專案 + domain + 連結
+    new-domain.sh               ← 僅建立 iCloud domain
+    link.sh                     ← 連結 domain 到專案
+    install-adapters.sh         ← 安裝各 AI 的 global skill
+    status.sh                   ← 查看所有連結狀態
+    reindex.sh                  ← 重建各 domain 的 index.md Files 清單
+  adapters/
+    _behavior.md                ← 行為規範唯一真實來源
+    claude/
+      meta.sh
+      project-snippet.md
+      global-skill.md
+    gemini/
+      meta.sh
+      project-snippet.md
   templates/
-    index.md           ← domain 知識檔模板
-    CLAUDE.md.snippet  ← 自動寫入專案 CLAUDE.md 的片段
+    index.md                    ← 新 domain 的初始 index.md 模板
+    knowledge.md                ← 新知識檔模板
+    CLAUDE.md.snippet           ← （舊版，已由 adapters/ 取代）
   skills/
-    tesseract.md       ← Claude Code skill（需安裝）
+    tesseract.md                ← 開發中的 skill（安裝前的原始檔）
 ```
 
-**知識資料**（`iCloud Drive/Tesseract/`）：
+**知識資料**（`iCloud Drive/Tesseract/`，由 iCloud 同步備份）：
 ```
 Tesseract/
-  tesseract/           ← 個人通用知識庫（預設 domain）
+  tesseract/                    ← 個人通用知識庫（預設 domain）
     index.md
+    <topic>.md
     assets/
   <其他 domain>/
     index.md
+    <topic>.md
     assets/
 ```
 
@@ -47,6 +221,7 @@ Tesseract/
 ```
 my-project/
   tesseract/  →  ln -s  →  iCloud/Tesseract/<domain>/
+  CLAUDE.md   →  包含 tesseract-start/end 片段（AI 操作規則）
 ```
 
 ---
@@ -58,12 +233,11 @@ my-project/
 echo 'export PATH="$PATH:$HOME/Documents/tesseract/bin"' >> ~/.zshrc
 source ~/.zshrc
 
-# 2. 安裝 Claude Code Skill
-mkdir -p ~/.claude/skills
-ln -sf ~/Documents/tesseract/skills/tesseract.md ~/.claude/skills/tesseract.md
-
-# 3. 初始化（建立設定檔）
+# 2. 初始化（建立設定檔 ~/.tesseractrc）
 tesseract init
+
+# 3. 安裝 AI adapter global skill
+tesseract install-adapters
 ```
 
 ---
@@ -71,39 +245,22 @@ tesseract init
 ## 基本使用
 
 ```bash
-# 建立新 domain
-tesseract new-domain product
+# 建立新專案（一步完成：資料夾 + domain + 連結）
+tesseract new my-project
 
-# 將 domain 連結到專案
+# 或分步操作：
+#   建立新 domain
+tesseract new-domain product
+#   將現有專案連結到 domain
 cd ~/code/my-project
 tesseract link . product
-# → 在專案根目錄建立 tesseract/ symlink
-# → 自動更新專案的 CLAUDE.md
 
 # 查看目前所有連結
 tesseract status
 
-# 重新產生各 domain 的 summary
+# 重新產生各 domain 的 index.md Files 清單
 tesseract reindex
 ```
-
----
-
-## Domain 結構
-
-每個 domain 是一個獨立的知識領域。`index.md` 是主要知識檔，包含固定 schema 讓 AI 能可靠讀寫：
-
-- `## Context`：此 domain 的目的與範疇
-- `## Knowledge`：核心知識，AI 持續更新
-- `## User Preferences`：AI 學到的使用者習慣與偏好
-- `## Open Questions`：尚未解決的問題
-- `## Changelog`：Append-only 變更紀錄
-
----
-
-## Symlink 的用途
-
-`tesseract link` 在專案中建立 `tesseract/` symlink，使 IDE（如 VS Code、RubyMine）可以在 file tree 中看到知識資料夾，讓使用者能直接手動修正 AI 寫入的內容，而不需要另外開啟 iCloud 資料夾。
 
 ---
 
