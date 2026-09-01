@@ -2,6 +2,7 @@
 
 require_relative 'store'
 require_relative 'server'
+require_relative 'installer'
 require 'pathname'
 require 'fileutils'
 
@@ -30,8 +31,12 @@ module Tesseract
         cmd_reindex
       when 'init'
         cmd_init(args)
-      when 'mcp-config', 'config'
-        cmd_mcp_config
+      when 'config'
+        cmd_config(args)
+      when 'mcp-install', 'install-mcp'
+        cmd_mcp_install
+      when 'mcp-config'
+        cmd_mcp_config(args)
       when 'mcp'
         cmd_mcp(args)
       when 'help', '--help', '-h'
@@ -203,19 +208,19 @@ module Tesseract
       puts "iCloud 知識庫 Vault：#{@store.domains_root}"
       puts ''
 
-      root_index = @store.domains_root.join('index.md')
+      root_index = @store.global_dir.join('index.md')
       if root_index.file?
         last_mod = root_index.mtime.strftime('%Y-%m-%d %H:%M')
         puts '── 全域知識庫 (Global Domain) ───────────'
-        puts "  ✓ global (最後更新：#{last_mod})"
+        puts "  ✓ _global (最後更新：#{last_mod})"
       else
-        puts '  ✗ global (尚未初始化，請執行 tesseract init)'
+        puts '  ✗ _global (尚未初始化，請執行 tesseract init)'
       end
 
       puts ''
       puts '── 專案知識 Domains ──────────────────────'
 
-      domains = @store.list_domains.reject { |d| d == 'global' }
+      domains = @store.list_domains.reject { |d| d == '_global' }
       if domains.empty?
         puts '  （目前沒有任何專案 domain）'
         puts '  建立新專案與 domain：tesseract new <專案名稱>'
@@ -297,20 +302,114 @@ module Tesseract
 
       puts ''
       puts "✓ 知識庫路徑已就緒：#{target_dir}"
-      puts "✓ 全域索引已建立：#{target_dir.join('index.md')}"
+      puts "✓ 全域索引已建立：#{store.global_dir.join('index.md')}"
+      puts ''
+
+      # 自動配置各 AI Agent 的 MCP
+      puts '── 自動配置 AI Agent MCP 服務 ───────────'
+      installer = MCPInstaller.new
+      results = installer.install_all
+
+      if results.empty?
+        puts '  （尚未偵測到已安裝的 Claude / Gemini / Cursor 設定檔）'
+      else
+        results.each do |res|
+          if res[:success]
+            puts "  ✓ 已自動配置 #{res[:name]} (#{res[:path]})"
+          else
+            puts "  ✗ 配置 #{res[:name]} 失敗: #{res[:error]}"
+          end
+        end
+      end
+
       puts ''
       puts '=== 初始化完成 ==='
       puts ''
-      puts '接下來的步驟：'
-      puts '  1. 配置 AI Agent 的 MCP Server：'
-      puts '     tesseract mcp-config'
-      puts ''
-      puts '  2. 建立或連結專案：'
-      puts '     tesseract new <專案名稱>   或   tesseract link'
+      puts '接下來您可以：'
+      puts '  1. 建立新專案：tesseract new <專案名稱>'
+      puts '  2. 連結既有專案：cd <專案目錄> && tesseract link'
       puts ''
     end
 
-    def cmd_mcp_config
+    def cmd_config(args)
+      subcommand = args.first
+
+      case subcommand
+      when 'mcp'
+        action = args[1]
+        if action == 'install'
+          cmd_mcp_install
+        elsif action == 'show'
+          cmd_mcp_config([])
+        else
+          show_config_overview(interactive: true)
+        end
+      when 'install', 'mcp-install'
+        cmd_mcp_install
+      when 'show'
+        cmd_mcp_config([])
+      else
+        show_config_overview(interactive: $stdin.tty?)
+      end
+    end
+
+    def show_config_overview(interactive: false)
+      puts '=== Tesseract 設定管理 (Configuration) ==='
+      puts ''
+      puts "知識庫路徑 (Vault)：#{@store.domains_root}"
+      puts ''
+      puts '── AI Agent MCP 註冊狀態 ─────────────────'
+
+      installer = MCPInstaller.new
+      statuses = installer.check_status
+
+      statuses.each do |s|
+        if s[:installed]
+          puts "  ✓ #{s[:name].ljust(26)} [已啟用] (#{s[:path]})"
+        elsif s[:detected]
+          puts "  ○ #{s[:name].ljust(26)} [未註冊] (#{s[:path]})"
+        else
+          puts "  — #{s[:name].ljust(26)} [未安裝/無設定檔]"
+        end
+      end
+
+      puts ''
+      puts '可用操作指令：'
+      puts '  tesseract config mcp install   -> 自動註冊/更新 MCP 至所有偵測到的 AI 工具'
+      puts '  tesseract config mcp show      -> 顯示手動設定用的 JSON 代碼'
+      puts ''
+
+      if interactive
+        print '是否要立即自動更新/註冊 MCP 設定到所有工具？[y/N] '
+        answer = $stdin.gets.strip
+        if answer.match?(/^[Yy]$/)
+          puts ''
+          cmd_mcp_install
+        end
+      end
+    end
+
+    def cmd_mcp_install
+      puts '=== 自動配置 AI Agent MCP 服務 ==='
+      puts ''
+      installer = MCPInstaller.new
+      results = installer.install_all
+
+      if results.empty?
+        puts '（尚未偵測到支援的 AI 工具設定檔）'
+      else
+        results.each do |res|
+          if res[:success]
+            puts "  ✓ 已成功註冊至 #{res[:name]} (#{res[:path]})"
+          else
+            puts "  ✗ 註冊 #{res[:name]} 失敗: #{res[:error]}"
+          end
+        end
+      end
+      puts ''
+    end
+
+    def cmd_mcp_config(_args)
       mcp_bin = Pathname.new(File.expand_path('../../bin/tesseract-mcp', __FILE__))
 
       puts '=== Tesseract MCP Configuration ==='
@@ -356,7 +455,7 @@ module Tesseract
       puts ''
     end
 
-    def cmd_mcp(args)
+    def cmd_mcp(_args)
       server = MCPServer.new(cwd: @cwd)
       server.start
     end
@@ -366,12 +465,12 @@ module Tesseract
         用法: tesseract <指令> [參數]
 
         常用指令:
+          init [路徑]                  初始化 Tesseract 知識庫並自動配置 AI Agent MCP
+          config                       查看與管理 Tesseract 設定 (MCP 狀態與管理)
           new <名稱> [路徑]            建立專案資料夾 + iCloud 知識庫 + 連結（一步完成）
           link [路徑] [domain]         將既有專案連結到知識 domain (建立 symlink，預設同資料夾名)
           status                       列出所有 domain 與已連結專案狀態
-          mcp-config                   顯示各 AI 工具（Claude / Gemini / Cursor）的 MCP 設定
           mcp                          啟動 Tesseract MCP Server (Stdio JSON-RPC)
-          init [路徑]                  初始化 Tesseract 知識庫
           new-domain <名稱> [說明]     建立新 iCloud 知識 domain
           reindex                      重建各 domain 的 index.md Files 清單
           help                         顯示此說明

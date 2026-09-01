@@ -11,6 +11,7 @@ require_relative '../mcp/store'
 require_relative '../mcp/prompts'
 require_relative '../mcp/tools'
 require_relative '../mcp/server'
+require_relative '../mcp/installer'
 require_relative '../mcp/cli'
 
 class TestTesseractStore < Minitest::Test
@@ -26,10 +27,10 @@ class TestTesseractStore < Minitest::Test
   end
 
   def test_root_initialization
-    index_file = File.join(@tmpdir, 'index.md')
-    assert File.exist?(index_file), 'Root index.md should exist'
+    index_file = File.join(@tmpdir, '_global', 'index.md')
+    assert File.exist?(index_file), '_global/index.md should exist'
     content = File.read(index_file)
-    assert_includes content, '# Tesseract Global Knowledge Base'
+    assert_includes content, '# _global'
     assert_includes content, '## Files'
     assert_includes content, '## Changelog'
   end
@@ -44,19 +45,19 @@ class TestTesseractStore < Minitest::Test
     )
 
     assert res[:success]
-    assert_equal 'global', res[:domain]
+    assert_equal '_global', res[:domain]
     assert_equal 'auth-pattern', res[:topic]
 
-    # Verify topic file
-    topic_file = File.join(@tmpdir, 'auth-pattern.md')
+    # Verify topic file inside _global/
+    topic_file = File.join(@tmpdir, '_global', 'auth-pattern.md')
     assert File.exist?(topic_file)
     topic_content = File.read(topic_file)
     assert_includes topic_content, '# Auth pattern'
     assert_includes topic_content, '#security #auth'
     assert_includes topic_content, 'JWT based authentication'
 
-    # Verify root index.md updated
-    index_content = File.read(File.join(@tmpdir, 'index.md'))
+    # Verify _global/index.md updated
+    index_content = File.read(File.join(@tmpdir, '_global', 'index.md'))
     assert_includes index_content, '- [[auth-pattern]] — Auth pattern #security #auth'
     assert_includes index_content, 'Initial auth pattern decision (AI)'
 
@@ -126,6 +127,37 @@ class TestTesseractStore < Minitest::Test
   end
 end
 
+class TestMCPInstaller < Minitest::Test
+  def setup
+    @tmpdir = Dir.mktmpdir('tesseract_inst_test_')
+    @mcp_bin = '/usr/local/bin/tesseract-mcp'
+    @installer = Tesseract::MCPInstaller.new(@mcp_bin)
+  end
+
+  def teardown
+    FileUtils.remove_entry(@tmpdir) if File.exist?(@tmpdir)
+  end
+
+  def test_install_all_returns_valid_records
+    results = @installer.install_all
+    assert results.is_a?(Array)
+    results.each do |r|
+      assert r[:name]
+      assert r.key?(:success)
+    end
+  end
+
+  def test_check_status_returns_structured_results
+    statuses = @installer.check_status
+    assert statuses.is_a?(Array)
+    statuses.each do |s|
+      assert s[:name]
+      assert s.key?(:installed)
+      assert s.key?(:detected)
+    end
+  end
+end
+
 class TestTesseractCLI < Minitest::Test
   def setup
     @tmpdir = Dir.mktmpdir('tesseract_cli_test_')
@@ -175,6 +207,17 @@ class TestTesseractCLI < Minitest::Test
     symlink_path = File.join(existing_repo, 'tesseract')
     assert File.symlink?(symlink_path)
     assert_includes File.read(File.join(existing_repo, '.gitignore')), 'tesseract'
+  end
+
+  def test_cli_config_overview
+    out, = capture_io do
+      cli = Tesseract::CLI.new(['config'], @project_dir)
+      cli.run
+    end
+
+    assert_includes out, 'Tesseract 設定管理'
+    assert_includes out, 'AI Agent MCP 註冊狀態'
+    assert_includes out, 'Claude Code'
   end
 end
 

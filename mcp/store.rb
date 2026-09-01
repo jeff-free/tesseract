@@ -10,6 +10,7 @@ module Tesseract
     DEFAULT_ICLOUD_PATH = File.expand_path(
       '~/Library/Mobile Documents/com~apple~CloudDocs/Tesseract'
     ).freeze
+    GLOBAL_DIR_NAME = '_global'
 
     attr_reader :domains_root, :cwd
 
@@ -21,19 +22,23 @@ module Tesseract
       ensure_root_exists!
     end
 
-    def ensure_root_exists!
-      FileUtils.mkdir_p(@domains_root) unless @domains_root.exist?
-      ensure_index_file(@domains_root, 'Tesseract Global Knowledge Base', 'Global personal knowledge base and preferences')
+    def global_dir
+      @domains_root.join(GLOBAL_DIR_NAME)
     end
 
-    # Resolves domain name: "global" -> root, "auto" -> based on cwd or global, other -> subfolder
+    def ensure_root_exists!
+      FileUtils.mkdir_p(global_dir.join('assets'))
+      ensure_index_file(global_dir, '_global', 'Global personal knowledge base, general architecture decisions, and cross-project preferences')
+    end
+
+    # Resolves domain name: "global" / "_global" -> _global folder, "auto" -> based on cwd, other -> subfolder
     def resolve_domain_dir(domain = 'auto')
       domain_str = domain.to_s.strip.downcase
-      if domain_str == 'global' || domain_str == '.' || domain_str.empty?
-        @domains_root
+      if domain_str == 'global' || domain_str == '_global' || domain_str == '.' || domain_str.empty?
+        global_dir
       elsif domain_str == 'auto'
         detected = detect_domain_from_cwd
-        detected ? @domains_root.join(detected) : @domains_root
+        detected ? @domains_root.join(detected) : global_dir
       else
         @domains_root.join(domain_str)
       end
@@ -53,23 +58,25 @@ module Tesseract
       # Check if cwd basename matches a domain folder in domains_root
       project_name = @cwd.basename.to_s
       domain_candidate = @domains_root.join(project_name)
-      return project_name if domain_candidate.directory?
+      return project_name if domain_candidate.directory? && project_name != GLOBAL_DIR_NAME
 
       nil
     end
 
     def current_domain_name
       detected = detect_domain_from_cwd
-      detected || 'global'
+      detected || '_global'
     end
 
     def list_domains
-      domains = ['global']
+      domains = [GLOBAL_DIR_NAME]
       return domains unless @domains_root.exist?
 
       @domains_root.children.select(&:directory?).each do |dir|
         name = dir.basename.to_s
-        domains << name unless name.start_with?('.') || name == 'assets'
+        next if name.start_with?('.') || name == 'assets' || name == GLOBAL_DIR_NAME
+
+        domains << name
       end
       domains.sort
     end
@@ -79,7 +86,7 @@ module Tesseract
       return [] unless domain_dir.exist?
 
       topics = []
-      domain_name = (domain_dir == @domains_root) ? 'global' : domain_dir.basename.to_s
+      domain_name = (domain_dir == global_dir) ? '_global' : domain_dir.basename.to_s
 
       domain_dir.children.select { |f| f.file? && f.extname == '.md' }.sort.each do |file|
         topic_name = file.basename('.md').to_s
@@ -112,7 +119,7 @@ module Tesseract
       end
 
       {
-        domain: (domain_dir == @domains_root) ? 'global' : domain_dir.basename.to_s,
+        domain: (domain_dir == global_dir) ? '_global' : domain_dir.basename.to_s,
         topic: clean_topic,
         content: file_path.read(encoding: 'UTF-8'),
         found: true,
@@ -138,7 +145,7 @@ module Tesseract
       file_path.write(final_content, encoding: 'UTF-8')
 
       # Ensure index.md exists and is updated
-      domain_name = (domain_dir == @domains_root) ? 'global' : domain_dir.basename.to_s
+      domain_name = (domain_dir == global_dir) ? '_global' : domain_dir.basename.to_s
       ensure_index_file(domain_dir, domain_name)
       update_index_files_section(domain_dir)
 
@@ -164,7 +171,7 @@ module Tesseract
       target_dirs = if domain
                       [resolve_domain_dir(domain)]
                     else
-                      [@domains_root] + @domains_root.children.select(&:directory?)
+                      @domains_root.children.select(&:directory?)
                     end
 
       results = []
@@ -172,7 +179,7 @@ module Tesseract
       target_dirs.each do |dir|
         next unless dir.exist?
 
-        dom_name = (dir == @domains_root) ? 'global' : dir.basename.to_s
+        dom_name = (dir == global_dir) ? '_global' : dir.basename.to_s
 
         dir.children.select { |f| f.file? && f.extname == '.md' }.each do |file|
           topic_name = file.basename('.md').to_s
@@ -226,11 +233,11 @@ module Tesseract
 
     def reindex_all
       reindexed = []
-      ([@domains_root] + @domains_root.children.select(&:directory?)).each do |dir|
+      @domains_root.children.select(&:directory?).each do |dir|
         next unless dir.exist? && dir.join('index.md').exist?
 
         update_index_files_section(dir)
-        reindexed << ((dir == @domains_root) ? 'global' : dir.basename.to_s)
+        reindexed << ((dir == global_dir) ? '_global' : dir.basename.to_s)
       end
       reindexed
     end

@@ -10,3 +10,6 @@ domains/*/assets/*.mkv
 # Tesseract symlink（由 tesseract link 自動建立，不應進 git）
 tesseract
 domains/
+
+# Ruby / IDE
+.ruby-lsp/
