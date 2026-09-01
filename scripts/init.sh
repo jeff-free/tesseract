@@ -28,32 +28,29 @@ DOMAINS_PATH="${input_domains:-$DEFAULT_DOMAINS}"
 DOMAINS_PATH="${DOMAINS_PATH/#\~/$HOME}"
 mkdir -p "$DOMAINS_PATH"
 
+# 選擇 AI adapters
+echo ""
+echo "要使用哪些 AI adapter？（逗號分隔，預設：claude）"
+echo "可用：claude, gemini"
+read -rp "Adapters: " input_adapters
+ADAPTERS="${input_adapters:-claude}"
+
 # 寫入設定檔
 cat > "$CONFIG_FILE" <<EOF
 # Tesseract 設定檔
 # 由 tesseract init 自動產生
 TESSERACT_HOME="$TESSERACT_HOME"
 TESSERACT_DOMAINS="$DOMAINS_PATH"
+TESSERACT_ADAPTERS="$ADAPTERS"
 EOF
 
 echo ""
 echo "✓ 設定檔已建立：$CONFIG_FILE"
 echo "✓ Domains 資料夾：$DOMAINS_PATH"
+echo "✓ Adapters：$ADAPTERS"
 
-# 安裝 Claude Code Skill
-SKILL_DIR="$HOME/.claude/skills"
-SKILL_SRC="$TESSERACT_HOME/skills/tesseract.md"
-SKILL_DEST="$SKILL_DIR/tesseract.md"
-
-if [[ -f "$SKILL_SRC" ]]; then
-    mkdir -p "$SKILL_DIR"
-    if [[ -L "$SKILL_DEST" ]]; then
-        echo "✓ Claude Code Skill 已安裝（symlink）"
-    else
-        ln -sf "$SKILL_SRC" "$SKILL_DEST"
-        echo "✓ Claude Code Skill 已安裝：$SKILL_DEST"
-    fi
-fi
+# 安裝 global skill（各 adapter 自行決定是否需要）
+bash "$(dirname "$0")/install-adapters.sh"
 
 # 建立預設 tesseract domain（個人通用知識庫）
 TESSERACT_DOMAIN_DIR="$DOMAINS_PATH/tesseract"
@@ -68,5 +65,5 @@ echo ""
 echo "下一步："
 echo "  1. 確認 PATH 設定：export PATH=\"\$PATH:$TESSERACT_HOME/bin\""
 echo "     （將此行加入 ~/.zshrc 讓設定永久生效）"
-echo "  2. 建立專案連結：cd <專案路徑> && tesseract link . <domain>"
-echo "  3. 使用 Claude Code，AI 會自動讀取並強化知識庫"
+echo "  2. 建立或進入專案：tesseract new <名稱>"
+echo "  3. 使用 AI 開始工作，知識庫會自動讀寫"
