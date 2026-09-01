@@ -6,16 +6,20 @@
 知識庫路徑：`{{DOMAIN_DIR}}`
 本機 symlink：`tesseract/`（在此專案根目錄）
 
+## 結構
+
+- `tesseract/index.md`：索引頁，列出所有知識檔案（`## Files`）與 Changelog
+- `tesseract/<topic>.md`：知識本體，一個主題一個檔案
+
 ## 使用規則
 
-1. 工作開始前，讀取 `tesseract/index.md` 取得背景知識
-   - 若 context 緊張且存在 `tesseract/summary.md`，優先讀 summary
-2. **主動強化時機**（不等使用者要求）：做出設計決策、解決問題、發現使用者偏好時，立即更新
-3. 使用者說「完成」、「更新知識庫」時也執行更新
-4. 更新 `tesseract/index.md` 的規則：
-   - `## Knowledge`：新增或精煉洞見，使用 `#tag` 標記主題
-   - `## User Preferences`：記錄確認觀察到的偏好
-   - `## Related Domains`：使用 `[[domain-name]]` 連結相關 domain
-   - `## Changelog` 最下方 append：`- YYYY-MM-DD: 簡短說明（AI）`
-5. 不要把程式碼存進知識庫；只存知識、洞見、架構決策、使用者偏好
+1. 工作開始前，讀 `tesseract/index.md` 了解有哪些知識檔；讀與任務相關的 `<topic>.md`
+2. 主動強化時機（不等使用者）：設計決策、問題解決、發現使用者偏好、重要洞見
+3. 強化方式：
+   - 找到對應的 `<topic>.md` 更新；找不到就新增一個
+   - 使用 `#tag` 標記主題，`[[檔名]]` 連結相關知識
+   - **不把知識寫進 index.md**，它只是索引
+   - 新增檔案後，在 `index.md` 的 `## Files` 加入連結
+   - 在 `index.md` 的 `## Changelog` 最下方 append 一行
+4. 不把程式碼存進知識庫；只存知識、洞見、決策、使用者偏好
 <!-- tesseract-end -->
