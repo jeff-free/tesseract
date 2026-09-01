@@ -2,7 +2,7 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CLI_RB="$SCRIPT_DIR/../mcp/cli.rb"
+SERVER_RB="$SCRIPT_DIR/../mcp/server.rb"
 
 # Find a Ruby 3.0+ binary
 find_ruby() {
@@ -52,9 +52,9 @@ find_ruby() {
 RUBY_BIN=$(find_ruby || true)
 
 if [ -z "$RUBY_BIN" ]; then
-    echo "[Tesseract] Error: Ruby 3.0.0 or higher is required." >&2
-    echo "[Tesseract] Please install Ruby >= 3.0 via rbenv, asdf, mise, or Homebrew (brew install ruby)." >&2
+    echo "[Tesseract MCP] Error: Ruby 3.0.0 or higher is required to run Tesseract MCP." >&2
+    echo "[Tesseract MCP] Please install Ruby >= 3.0 via rbenv, asdf, mise, or Homebrew (brew install ruby)." >&2
     exit 1
 fi
 
-exec "$RUBY_BIN" "$CLI_RB" "$@"
+exec "$RUBY_BIN" "$SERVER_RB" "$@"

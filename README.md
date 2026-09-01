@@ -1,273 +1,195 @@
-# Tesseract — 個人知識庫系統
+# Tesseract — 人機共生個人知識庫系統
 
-Tesseract 是一個以「知識與產出分離」為核心的個人知識管理架構。AI 在各個專案中工作時，會持續讀取並強化 Tesseract 中的知識；使用者可以直接在 IDE 中手動修正 AI 產出的知識紀錄。
+Tesseract 是一個以「知識與產出分離、人機共生」為核心的個人知識管理（PKM）架構。
+使用者可以透過 **Obsidian** 或 **IDE** 檔案樹直接瀏覽與手動維護知識庫；同時，AI Agent（Claude Code、Gemini/Antigravity、Cursor 等）透過標準 **MCP (Model Context Protocol)** 讀取知識並自動記錄架構決策。
+
+---
+
+## 系統全景架構
+
+```
+                              ┌─────────────────────────────────────────┐
+                              │       Obsidian / Foam / Finder          │
+                              │ (直接將 iCloud/Tesseract/ 開啟為 Vault) │
+                              └────────────────────┬────────────────────┘
+                                                   │
+                                                   ▼
+┌──────────────────────────────┐       ┌───────────────────────────────────────┐
+│     使用者專案 (IDE)         │◄─────►│    iCloud Drive/Tesseract/ (Vault)    │
+│    ~/code/my-project/        │       │                                       │
+│    ├── src/                  │       │    ├── index.md        (全域知識索引)  │
+│    ├── package.json          │       │    ├── dev-rules.md    (跨專案通用偏好)│
+│    ├── .gitignore (含捷徑)   │       │    │                                  │
+│    └── tesseract/ ───────────┼──────►│    └── my-project/     (專案專屬知識)  │
+│        (Symlink 隨時編輯)    │       │          ├── index.md                 │
+└──────────────────────────────┘       │          └── db-schema.md             │
+                                       └───────────────────▲───────────────────┘
+                                                           │
+                                                  (即時讀寫 Markdown 檔案)
+                                                           │
+                                       ┌───────────────────┴───────────────────┐
+                                       │         bin/tesseract-mcp             │
+                                       │    (純 Ruby 3.0+ Stdlib 打造)          │
+                                       └───────────────────▲───────────────────┘
+                                                           │ (JSON-RPC 2.0 stdio)
+                                       ┌───────────────────┴───────────────────┐
+                                       │          各大 AI Agents / IDEs        │
+                                       │        (Claude / Gemini / Cursor)     │
+                                       └───────────────────────────────────────┘
+```
 
 ---
 
 ## 設計原則
 
-1. **知識與產出分離**：知識存在 Tesseract，程式碼與產出存在各自的專案
-2. **AI 雙向互動**：AI 讀取知識以輔助工作，工作後寫回知識以持續強化
-3. **人工可介入**：透過 symlink 讓知識資料夾出現在 IDE 的 file tree 中，使用者可直接修正
-4. **Git 版控**：所有知識變更有完整歷史紀錄
+1. **知識與產出分離**：知識集中在 iCloud Tesseract 知識庫（Obsidian 相容），程式碼留在各專案。
+2. **人是知識庫的主人**：透過 Symlink 讓知識資料夾出現在 IDE 檔案樹中，或直接用 Obsidian 打開，隨時手動修正與整理。
+3. **AI 透過 MCP 標準存取**：不再向專案強行注入或覆蓋 `CLAUDE.md` / `GEMINI.md`，走標準 MCP 通訊，乾淨且零專案污染。
+4. **雙軌領域感知（Global + Project）**：AI 能同時讀取「全域通用原則」與「當前專案專屬架構」。
 
 ---
 
-## 系統全景
+## 系統需求
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         使用者的機器                             │
-│                                                                 │
-│  ┌─────────────────────────┐    ┌──────────────────────────┐   │
-│  │   ~/Documents/tesseract │    │   iCloud Drive/Tesseract │   │
-│  │   （此 repo，工具箱）    │    │   （知識資料，同步備份） │   │
-│  │                         │    │                          │   │
-│  │  bin/tesseract  ←────── │────│──► new-domain.sh         │   │
-│  │  scripts/               │    │    建立 domain 資料夾     │   │
-│  │  adapters/              │    │                          │   │
-│  │  skills/                │    │  tesseract/              │   │
-│  │  templates/             │    │    index.md              │   │
-│  └─────────────────────────┘    │    <topic>.md            │   │
-│                                 │    assets/               │   │
-│                                 │                          │   │
-│                                 │  product/                │   │
-│                                 │    index.md              │   │
-│                                 │    <topic>.md            │   │
-│                                 └──────────────────────────┘   │
-│                                           ▲                     │
-│                        symlink            │                     │
-│  ~/code/my-project/tesseract/ ───────────┘                     │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+- **macOS**（預設支援 iCloud Drive 同步）
+- **Ruby >= 3.0.0**（純標準庫，**零外部 Gem 相依性**，無需 `bundle install`）
+  - 支援系統 Ruby、`rbenv`、`asdf`、`mise` 或 Homebrew Ruby (`brew install ruby`)。
 
 ---
 
-## 初始化與安裝流程
+## 快速開始（三步驟）
 
+### 1. 加入 PATH（提高優先權，避免與系統 OCR 工具衝突）
+
+將此行加入您的 `~/.zshrc`：
+
+```bash
+export PATH="$HOME/Documents/tesseract/bin:$PATH"
 ```
-使用者執行：
 
-  1. echo 'export PATH=...' >> ~/.zshrc      # 加 CLI 到 PATH
-  2. tesseract init                           # 建立 ~/.tesseractrc
-  3. tesseract install-adapters               # 安裝 global skill
-
-            └─► ~/.claude/skills/tesseract.md  (Claude adapter)
-                ~/.tesseractrc                  (設定檔)
-                  TESSERACT_DOMAINS=~/iCloud/Tesseract
-                  TESSERACT_ADAPTERS=claude
+套用設定：
+```bash
+source ~/.zshrc
 ```
+
+### 2. 初始化知識庫
+
+```bash
+tesseract init
+```
+此步驟會在 iCloud Drive 建立 `Tesseract/` 資料夾與全域 `index.md`。
+
+### 3. 配置 AI Agent 的 MCP Server
+
+執行以下指令查看各大 AI 工具的設定方式：
+```bash
+tesseract mcp-config
+```
+
+#### 各 AI 工具設定範例：
+
+* **Claude Code CLI**：
+  ```bash
+  claude mcp add tesseract -- "$HOME/Documents/tesseract/bin/tesseract-mcp"
+  ```
+
+* **Google Antigravity / Gemini CLI**（在 `mcp_config.json` 中加入）：
+  ```json
+  {
+    "mcpServers": {
+      "tesseract": {
+        "command": "/Users/jfree/Documents/tesseract/bin/tesseract-mcp"
+      }
+    }
+  }
+  ```
+
+* **Claude Desktop**（`~/Library/Application Support/Claude/claude_desktop_config.json`）：
+  ```json
+  {
+    "mcpServers": {
+      "tesseract": {
+        "command": "/Users/jfree/Documents/tesseract/bin/tesseract-mcp"
+      }
+    }
+  }
+  ```
+
+* **Cursor**（`.cursor/mcp.json`）：
+  ```json
+  {
+    "mcpServers": {
+      "tesseract": {
+        "command": "/Users/jfree/Documents/tesseract/bin/tesseract-mcp"
+      }
+    }
+  }
+  ```
 
 ---
 
-## Domain 建立與專案連結
+## 日常工作流程
 
+### 建立新專案（一步到位）
+
+```bash
+tesseract new my-app
 ```
-tesseract new <名稱> [路徑]        ← 一步完成（推薦）
-  │
-  ├─► 在 ~/code/ 建立專案資料夾
-  ├─► 在 iCloud/Tesseract/<名稱>/ 建立 domain
-  └─► 執行 link（見下方）
+**自動完成三件事：**
+1. 建立專案目錄 `~/code/my-app`
+2. 在 iCloud 建立專屬知識庫 `iCloud/Tesseract/my-app/`（含 `index.md` 與 `assets/`）
+3. 在專案中建立 `my-app/tesseract/` 捷徑，並自動將 `tesseract` 加入 `.gitignore`
 
-─────────────────────────────────────────────────
+### 連結現有專案到既有知識 Domain
 
-tesseract link <專案路徑> <domain>  ← 連結現有專案到現有 domain
-  │
-  ├─► 建立 symlink
-  │     <專案>/tesseract/ ──→ iCloud/Tesseract/<domain>/
-  │
-  └─► 寫入 adapter 片段到 <專案>/CLAUDE.md
-        <!-- tesseract-start -->
-          domain 名稱、路徑、使用規則
-        <!-- tesseract-end -->
-
-結果：IDE file tree 中可見知識資料夾，AI 也收到操作規則
+```bash
+cd ~/code/existing-project
+tesseract link . my-domain
 ```
 
----
+### 查看目前狀態
 
-## Adapter 系統
-
-```
-adapters/
-  _behavior.md          ← 唯一真實來源（所有 AI 的行為規範）
-       │
-       ├─► adapters/claude/
-       │     meta.sh              (ADAPTER_FILENAME=CLAUDE.md)
-       │     project-snippet.md   (寫入專案的片段，含 {{DOMAIN_NAME}} 變數)
-       │     global-skill.md      (安裝到 ~/.claude/skills/)
-       │
-       └─► adapters/gemini/
-             meta.sh
-             project-snippet.md
-
-install-adapters.sh 讀取 TESSERACT_ADAPTERS=claude,gemini
-  → 對每個 adapter 執行對應的安裝步驟
+```bash
+tesseract status
 ```
 
----
+### 重建知識庫索引清單
 
-## AI 工作時的讀寫循環
-
-```
-AI 收到任務
-     │
-     ▼
-┌─────────────────────────────────┐
-│  工作前（載入知識）              │
-│                                 │
-│  1. 讀 tesseract/index.md       │
-│     → 看 ## Files 有哪些主題    │
-│  2. 讀相關的 <topic>.md         │
-│  3. 告知使用者已載入哪個 domain  │
-└────────────────┬────────────────┘
-                 │
-                 ▼
-           執行實際工作
-                 │
-                 ▼
-┌─────────────────────────────────┐
-│  主動強化（不等使用者）          │
-│                                 │
-│  觸發條件：                     │
-│  • 設計/架構決策確定             │
-│  • 問題解決（根因、workaround）  │
-│  • 觀察到使用者偏好              │
-│  • 對話中出現重要洞見            │
-│                                 │
-│  步驟：                         │
-│  1. 找 index.md ## Files        │
-│     → 找到 → 更新 <topic>.md    │
-│     → 找不到 → 新增 <topic>.md  │
-│  2. 若新增：在 index.md         │
-│     ## Files 加一行              │
-│  3. 在 index.md ## Changelog    │
-│     最下方 append 一行           │
-└─────────────────────────────────┘
+```bash
+tesseract reindex
 ```
 
 ---
 
-## Domain 內部結構
+## MCP Tools 清單（AI 自動呼叫）
 
-```
-iCloud/Tesseract/<domain>/
-│
-├── index.md                    ← 索引（只存目錄，不存知識內容）
-│   │
-│   ├── ## Context              ← 此 domain 的目的與範疇
-│   ├── ## Files                ← 知識檔清單
-│   │     - [[topic-a]] — 說明 #tag
-│   │     - [[topic-b]] — 說明 #tag
-│   └── ## Changelog            ← Append-only，不得刪除
-│         - 2026-01-01: 說明（AI）
-│
-├── topic-a.md                  ← 知識本體（一主題一檔案）
-│   ├── #tag 主題標記
-│   └── [[topic-b]] 跨檔連結
-│
-├── topic-b.md
-└── assets/                     ← 圖片等附件
-```
+Tesseract MCP Server 內建以下標準工具：
+
+| 工具名稱 | 說明 | 參數範例 |
+| :--- | :--- | :--- |
+| `tesseract_read_knowledge` | 讀取特定主題筆記或 `index.md` | `{"topic": "db-schema", "domain": "auto"}` |
+| `tesseract_save_knowledge` | 儲存知識（自動維護標籤、Files 清單與 Changelog） | `{"topic": "auth", "content": "...", "tags": ["#security"], "summary": "採用 JWT"}` |
+| `tesseract_search_knowledge` | 跨領域全文與 `#tag` 搜尋 | `{"query": "#database"}` 或 `{"query": "cors"}` |
+| `tesseract_list_topics` | 列出當前專案或全域的所有知識主題 | `{"domain": "auto"}` |
+| `tesseract_get_domain_status` | 取得當前知識庫狀態與活動 Domain | `{}` |
+| `tesseract_create_domain` | 動態建立新的知識 Domain | `{"domain": "payment-service", "description": "金流微服務"}` |
 
 ---
 
 ## 目錄結構
 
 ```
-~/Documents/tesseract/          ← 此 repo（工具箱）
-  bin/
-    tesseract                   ← CLI 主入口
-  scripts/
-    init.sh                     ← 初始化設定（建立 ~/.tesseractrc）
-    new.sh                      ← 一步建立專案 + domain + 連結
-    new-domain.sh               ← 僅建立 iCloud domain
-    link.sh                     ← 連結 domain 到專案
-    install-adapters.sh         ← 安裝各 AI 的 global skill
-    status.sh                   ← 查看所有連結狀態
-    reindex.sh                  ← 重建各 domain 的 index.md Files 清單
-  adapters/
-    _behavior.md                ← 行為規範唯一真實來源
-    claude/
-      meta.sh
-      project-snippet.md
-      global-skill.md
-    gemini/
-      meta.sh
-      project-snippet.md
-  templates/
-    index.md                    ← 新 domain 的初始 index.md 模板
-    knowledge.md                ← 新知識檔模板
-    CLAUDE.md.snippet           ← （舊版，已由 adapters/ 取代）
-  skills/
-    tesseract.md                ← 開發中的 skill（安裝前的原始檔）
+~/Documents/tesseract/                ← 工具箱 Repo
+├── bin/
+│   ├── tesseract                    ← 使用者操作 CLI
+│   └── tesseract-mcp                ← AI 呼叫的 MCP 服務入口（Ruby 3.0+）
+├── mcp/
+│   ├── server.rb                    ← JSON-RPC 2.0 stdio 協定引擎
+│   ├── store.rb                     ← 雙軌儲存與搜尋引擎（零 Gem 相依）
+│   ├── tools.rb                     ← MCP 工具定義與執行器
+│   └── prompts.rb                   ← 行為引導與規範
+├── scripts/                         ← CLI 各功能 Shell 腳本
+├── templates/                       ← index.md 模板
+├── test/                            ← 自動化單元與整合測試
+└── README.md
 ```
-
-**知識資料**（`iCloud Drive/Tesseract/`，由 iCloud 同步備份）：
-```
-Tesseract/
-  tesseract/                    ← 個人通用知識庫（預設 domain）
-    index.md
-    <topic>.md
-    assets/
-  <其他 domain>/
-    index.md
-    <topic>.md
-    assets/
-```
-
-**專案中**：
-```
-my-project/
-  tesseract/  →  ln -s  →  iCloud/Tesseract/<domain>/
-  CLAUDE.md   →  包含 tesseract-start/end 片段（AI 操作規則）
-```
-
----
-
-## 安裝
-
-```bash
-# 1. 加入 PATH（加到 ~/.zshrc 或 ~/.bashrc）
-echo 'export PATH="$PATH:$HOME/Documents/tesseract/bin"' >> ~/.zshrc
-source ~/.zshrc
-
-# 2. 初始化（建立設定檔 ~/.tesseractrc）
-tesseract init
-
-# 3. 安裝 AI adapter global skill
-tesseract install-adapters
-```
-
----
-
-## 基本使用
-
-```bash
-# 建立新專案（一步完成：資料夾 + domain + 連結）
-tesseract new my-project
-
-# 或分步操作：
-#   建立新 domain
-tesseract new-domain product
-#   將現有專案連結到 domain
-cd ~/code/my-project
-tesseract link . product
-
-# 查看目前所有連結
-tesseract status
-
-# 重新產生各 domain 的 index.md Files 清單
-tesseract reindex
-```
-
----
-
-## Skill 使用說明
-
-安裝後，在任何有 `tesseract/` symlink 的專案中使用 Claude Code，Claude 會自動：
-1. 讀取 `tesseract/index.md` 作為工作前置知識
-2. 工作結束後更新知識庫並寫入 Changelog
-
-可以在對話中直接告訴 Claude：「更新 Tesseract」或「把這個記錄到知識庫」。
