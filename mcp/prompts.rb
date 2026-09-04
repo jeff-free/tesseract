@@ -12,11 +12,13 @@ module Tesseract
 
       1. **Before Starting Tasks**:
          - List or read relevant knowledge topics using `tesseract_list_topics` or `tesseract_read_knowledge(topic: "index")`.
+         - Check project-specific rules in `tesseract/rule.md` or via `tesseract_read_knowledge(topic: "rule")`.
          - Use `tesseract_search_knowledge` if looking for specific concepts, keywords, or tags.
 
       2. **Proactive Knowledge Retention (Do not wait for user prompt)**:
          - Capture key architectural decisions, resolved root causes, workarounds, or user preferences.
          - Use `tesseract_save_knowledge` to record insights.
+         - If the user specifies or updates project-specific note-taking rules or preferences, record them in `tesseract/rule.md` (and use `tesseract_sync_project_rules` to keep project AI configs updated).
 
       3. **Structure & Formatting**:
          - One clear topic per file (e.g. `auth-flow`, `database-conventions`, `api-design`).

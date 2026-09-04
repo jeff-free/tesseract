@@ -112,6 +112,25 @@ module Tesseract
           },
           required: ['domain']
         }
+      },
+      {
+        name: 'tesseract_sync_project_rules',
+        description: 'Synchronize project-level AI config files (CLAUDE.md, .cursorrules, GEMINI.md, .windsurfrules) with safe pointer to tesseract/rule.md.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            targets: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'AI targets to sync: "claude", "cursor", "gemini", "windsurf", or "all". Defaults to ["all"].'
+            },
+            project_path: {
+              type: 'string',
+              description: 'Optional project root path. Defaults to active project working directory.'
+            }
+          },
+          required: []
+        }
       }
     ].freeze
 
@@ -199,11 +218,78 @@ module Tesseract
         res = store.create_domain(domain, description: desc)
         format_text(res[:message])
 
+      when 'tesseract_sync_project_rules'
+        targets = args['targets'] || ['all']
+        project_path = args['project_path']
+        res = sync_project_rules(store, targets: targets, project_path: project_path)
+        format_text(res[:message])
+
       else
         raise ArgumentError, "Unknown tool: #{name}"
       end
     rescue StandardError => e
       format_text("Tesseract Tool Error: #{e.message}")
+    end
+
+    AI_TARGET_FILES = {
+      'claude' => 'CLAUDE.md',
+      'cursor' => '.cursorrules',
+      'gemini' => 'GEMINI.md',
+      'windsurf' => '.windsurfrules'
+    }.freeze
+
+    def self.sync_project_rules(store, targets: ['all'], project_path: nil)
+      proj_path = Pathname.new(project_path || store.cwd)
+
+      # Ensure the active domain has rule.md
+      domain_dir = store.resolve_domain_dir('auto')
+      domain_name = (domain_dir == store.global_dir) ? '_global' : domain_dir.basename.to_s
+      store.ensure_rule_file(domain_dir, domain_name) if store.respond_to?(:ensure_rule_file)
+
+      rule_rel_path = 'tesseract/rule.md'
+      marker_start = '<!-- tesseract-rule-start -->'
+      marker_end = '<!-- tesseract-rule-end -->'
+      snippet = <<~MARKDOWN.strip
+        #{marker_start}
+        ## Tesseract 專案知識庫與自訂規範
+        請遵守本專案 `#{rule_rel_path}` 中定義的知識庫筆記方式與開發規範。
+        在處理任務前，可先閱讀 `#{rule_rel_path}` 或呼叫 `tesseract_read_knowledge(topic: "rule")`。
+        #{marker_end}
+      MARKDOWN
+
+      raw_targets = Array(targets).flatten.map(&:to_s).map(&:downcase)
+      selected = if raw_targets.empty? || raw_targets.include?('all')
+                   AI_TARGET_FILES.keys
+                 else
+                   raw_targets & AI_TARGET_FILES.keys
+                 end
+
+      synced = []
+      selected.each do |key|
+        filename = AI_TARGET_FILES[key]
+        file_path = proj_path.join(filename)
+
+        if file_path.file?
+          content = file_path.read(encoding: 'UTF-8')
+          new_content = if content.include?(marker_start) && content.include?(marker_end)
+                          content.sub(/#{Regexp.escape(marker_start)}.*?#{Regexp.escape(marker_end)}/m, snippet)
+                        else
+                          "#{content.rstrip}\n\n#{snippet}\n"
+                        end
+          file_path.write(new_content, encoding: 'UTF-8')
+          synced << "#{filename} (updated)"
+        else
+          file_path.write("#{snippet}\n", encoding: 'UTF-8')
+          synced << "#{filename} (created)"
+        end
+      end
+
+      {
+        success: true,
+        project_path: proj_path.to_s,
+        synced: synced,
+        message: "Successfully synchronized Tesseract rule pointers in #{proj_path}:\n" + synced.map { |s| "  - #{s}" }.join("\n")
+      }
     end
 
     def self.format_text(text)

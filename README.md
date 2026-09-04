@@ -102,8 +102,8 @@ tesseract new my-app
 ```
 **自動完成：**
 1. 建立專案目錄 `~/code/my-app`
-2. 在 iCloud 建立專屬知識庫 `iCloud/Tesseract/my-app/`（含 `index.md` 與 `assets/`）
-3. 在專案中建立 `my-app/tesseract/` 捷徑，並自動將 `tesseract` 加入 `.gitignore`
+2. 在 iCloud 建立專屬知識庫 `iCloud/Tesseract/my-app/`（含 `index.md`、`rule.md` 與 `assets/`）
+3. 在專案中建立 `my-app/tesseract/` 捷徑，並提供 Git 忽略設定提示
 
 ---
 
@@ -118,8 +118,26 @@ tesseract link
 *（也可以指定自訂 domain：`tesseract link . custom-domain`）*
 
 - 自動以當前目錄名稱作為知識庫 Domain。
-- 若 iCloud 中尚無該 Domain，會自動在雲端建立 `index.md`。
-- 自動建立 `tesseract/` symlink 並將其寫入 `.gitignore`。
+- 若 iCloud 中尚無該 Domain，會自動在雲端建立 `index.md` 與 `rule.md`。
+- 自動建立 `tesseract/` symlink，並提示 Git 忽略設定：
+  - **團隊共用忽略**：加入 `.gitignore`
+  - **僅本機忽略（不影響他人）**：加入 `.git/info/exclude`
+
+---
+
+### 專案專屬規範與跨 AI 同步 (`rule.md` & `sync-rules`)
+
+每個專案都擁有獨立的 `tesseract/rule.md`，用來定義該專案的**知識庫強化方式、筆記格式或開發習慣**（例如 ADR 規範、Debug 踩坑記錄時機等）：
+
+1. **使用者主導**：直接在 `tesseract/rule.md` 用 Markdown 書寫規範（單一真實來源）。
+2. **跨 AI 安全同步**：
+   ```bash
+   tesseract sync-rules
+   ```
+   *（也可以指定目標，如：`tesseract sync-rules claude cursor`）*
+   - 自動在專案根目錄的 `CLAUDE.md`、`.cursorrules`、`GEMINI.md`、`.windsurfrules` 嵌入指針。
+   - **非破壞性更新**：以標記區塊（`<!-- tesseract-rule-start -->`）插入，100% 保留現有檔案中原本的 build、test 等指令。
+   - 所有的 AI Agent 進到該專案時，都會自然遵循 `tesseract/rule.md` 的專案規範！
 
 ---
 
@@ -165,6 +183,7 @@ Tesseract MCP Server 內建以下標準工具，AI Agent 會在對話中視任�
 | `tesseract_list_topics` | 列出當前專案或全域的所有知識主題 | `{"domain": "auto"}` |
 | `tesseract_get_domain_status` | 取得當前知識庫狀態與活動 Domain | `{}` |
 | `tesseract_create_domain` | 動態建立新的知識 Domain | `{"domain": "payment-service", "description": "金流微服務"}` |
+| `tesseract_sync_project_rules` | 同步專案各 AI 設定檔（CLAUDE.md、.cursorrules 等）指向 `tesseract/rule.md` | `{"targets": ["claude", "cursor"]}` |
 
 ---
 

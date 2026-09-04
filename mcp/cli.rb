@@ -37,6 +37,8 @@ module Tesseract
         cmd_mcp_install
       when 'mcp-config'
         cmd_mcp_config(args)
+      when 'sync-rules'
+        cmd_sync_rules(args)
       when 'mcp'
         cmd_mcp(args)
       when 'help', '--help', '-h'
@@ -169,17 +171,14 @@ module Tesseract
         puts "✓ Symlink 已建立：#{link_path} → #{domain_dir}"
       end
 
-      # 自動加入 .gitignore
-      gitignore = project_path.join('.gitignore')
-      if gitignore.file?
-        content = gitignore.read(encoding: 'UTF-8')
-        unless content.lines.any? { |l| l.strip == 'tesseract' || l.strip == 'tesseract/' }
-          File.open(gitignore, 'a:UTF-8') do |f|
-            f.puts "\n# Tesseract knowledge base symlink\ntesseract"
-          end
-          puts "✓ 已將 tesseract 加入 #{gitignore}"
-        end
-      end
+      # 確保 domain 內有 rule.md
+      @store.ensure_rule_file(domain_dir, domain_name) if @store.respond_to?(:ensure_rule_file)
+
+      # 輸出 Git 忽略建議，不強制修改使用者的 .gitignore
+      puts ''
+      puts '💡 提示：若這是 Git 專案，為避免 symlink 影響遠端或隊友，建議將 tesseract/ 忽略：'
+      puts '   - 團隊共用忽略：在 .gitignore 加入「tesseract/」'
+      puts '   - 僅本機忽略（不影響他人）：在 .git/info/exclude 加入「tesseract/」'
     end
 
     def cmd_new_domain(args)
@@ -460,6 +459,13 @@ module Tesseract
       server.start
     end
 
+    def cmd_sync_rules(args)
+      require_relative 'tools' unless defined?(Tesseract::Tools)
+      targets = args.empty? ? ['all'] : args
+      res = Tools.sync_project_rules(@store, targets: targets)
+      puts res[:message]
+    end
+
     def cmd_help
       puts <<~HELP
         用法: tesseract <指令> [參數]
@@ -469,6 +475,7 @@ module Tesseract
           config                       查看與管理 Tesseract 設定 (MCP 狀態與管理)
           new <名稱> [路徑]            建立專案資料夾 + iCloud 知識庫 + 連結（一步完成）
           link [路徑] [domain]         將既有專案連結到知識 domain (建立 symlink，預設同資料夾名)
+          sync-rules [targets]         同步專案各 AI 設定檔（CLAUDE.md、.cursorrules 等）指向 tesseract/rule.md
           status                       列出所有 domain 與已連結專案狀態
           mcp                          啟動 Tesseract MCP Server (Stdio JSON-RPC)
           new-domain <名稱> [說明]     建立新 iCloud 知識 domain

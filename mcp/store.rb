@@ -29,6 +29,7 @@ module Tesseract
     def ensure_root_exists!
       FileUtils.mkdir_p(global_dir.join('assets'))
       ensure_index_file(global_dir, '_global', 'Global personal knowledge base, general architecture decisions, and cross-project preferences')
+      ensure_rule_file(global_dir, '_global')
     end
 
     # Resolves domain name: "global" / "_global" -> _global folder, "auto" -> based on cwd, other -> subfolder
@@ -222,6 +223,8 @@ module Tesseract
 
       FileUtils.mkdir_p(domain_dir.join('assets'))
       ensure_index_file(domain_dir, clean_name, description)
+      ensure_rule_file(domain_dir, clean_name)
+      update_index_files_section(domain_dir)
 
       {
         success: true,
@@ -240,6 +243,52 @@ module Tesseract
         reindexed << ((dir == global_dir) ? '_global' : dir.basename.to_s)
       end
       reindexed
+    end
+
+    def ensure_index_file(domain_dir, domain_name, description = 'Knowledge domain')
+      index_file = domain_dir.join('index.md')
+      return if index_file.exist?
+
+      today = Date.today.strftime('%Y-%m-%d')
+      content = <<~MARKDOWN
+        # #{domain_name}
+
+        ## Context
+        #{description}
+
+        ## Files
+        （尚無知識檔案）
+
+        ## Changelog
+        - #{today}: Domain initialized
+      MARKDOWN
+
+      index_file.write(content, encoding: 'UTF-8')
+    end
+
+    def ensure_rule_file(domain_dir, domain_name)
+      rule_file = domain_dir.join('rule.md')
+      return if rule_file.exist?
+
+      content = <<~MARKDOWN
+        # #{domain_name} 專案 AI 規範與知識庫指南
+
+        #rules #guidelines
+
+        此檔案定義本專案特有的 AI 行為、程式風格與 Tesseract 知識庫強化規格。
+
+        ## 1. 知識庫筆記與強化規範 (Tesseract Knowledge Rules)
+        - 當確立重大架構或技術決策時：記錄至 `[[adr-<topic>]]`，並標記 `#architecture #adr`。
+        - 當解決棘手問題或相依性衝突時：提煉根本成因與除錯步驟至 `[[troubleshooting]]`。
+        - 格式要求：說明「為什麼這樣做（Why）」而非僅有「怎麼做（How）」，程式碼僅摘錄核心關鍵片段。
+
+        ## 2. 專案開發指引 (Project Guidelines)
+        - 主要語言與框架：
+        - 測試指令：
+        - 建置指令：
+      MARKDOWN
+
+      rule_file.write(content, encoding: 'UTF-8')
     end
 
     private
@@ -289,26 +338,6 @@ module Tesseract
       res.join
     end
 
-    def ensure_index_file(domain_dir, domain_name, description = 'Knowledge domain')
-      index_file = domain_dir.join('index.md')
-      return if index_file.exist?
-
-      today = Date.today.strftime('%Y-%m-%d')
-      content = <<~MARKDOWN
-        # #{domain_name}
-
-        ## Context
-        #{description}
-
-        ## Files
-        （尚無知識檔案）
-
-        ## Changelog
-        - #{today}: Domain initialized
-      MARKDOWN
-
-      index_file.write(content, encoding: 'UTF-8')
-    end
 
     def update_index_files_section(domain_dir)
       index_file = domain_dir.join('index.md')

@@ -16,3 +16,9 @@ ruby test/test_mcp_server.rb
 ## 知識庫記錄（Dogfooding / 自我記錄）
 - 本專案透過 MCP 連結至 iCloud 知識庫中的 `tesseract` domain。
 - 開發本專案過程中的任何架構設計決策、重構心得與問題解法，請透過 `tesseract_save_knowledge` 即時記錄並更新知識庫。
+
+<!-- tesseract-rule-start -->
+## Tesseract 專案知識庫與自訂規範
+請遵守本專案 `tesseract/rule.md` 中定義的知識庫筆記方式與開發規範。
+在處理任務前，可先閱讀 `tesseract/rule.md` 或呼叫 `tesseract_read_knowledge(topic: "rule")`。
+<!-- tesseract-rule-end -->

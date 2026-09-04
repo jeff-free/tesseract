@@ -203,10 +203,64 @@ class TestTesseractCLI < Minitest::Test
     assert_includes out, '連結專案到 Tesseract 知識庫'
     assert_includes out, 'my-service'
 
-    # Verify symlink and gitignore
+    # Verify symlink and rule.md exist, and gitignore is untouched
     symlink_path = File.join(existing_repo, 'tesseract')
     assert File.symlink?(symlink_path)
-    assert_includes File.read(File.join(existing_repo, '.gitignore')), 'tesseract'
+    assert File.file?(File.join(existing_repo, 'tesseract', 'rule.md'))
+    refute_includes File.read(File.join(existing_repo, '.gitignore')), 'tesseract'
+    assert_includes out, '.git/info/exclude'
+  end
+
+  def test_sync_project_rules_creates_and_updates_cleanly
+    existing_repo = File.join(@project_dir, 'rule-test-proj')
+    FileUtils.mkdir_p(existing_repo)
+
+    # Pre-populate CLAUDE.md with custom build command
+    claude_file = File.join(existing_repo, 'CLAUDE.md')
+    File.write(claude_file, "# Custom Project\n\n- Build: npm run build\n")
+
+    store = Tesseract::Store.new(domains_root: @tmpdir, cwd: existing_repo)
+    store.create_domain('rule-test-proj')
+    File.symlink(File.join(@tmpdir, 'rule-test-proj'), File.join(existing_repo, 'tesseract'))
+
+    res = Tesseract::Tools.sync_project_rules(store, project_path: existing_repo)
+    assert res[:success]
+
+    # Verify CLAUDE.md preserved build command and got marker block
+    claude_content = File.read(claude_file)
+    assert_includes claude_content, 'npm run build'
+    assert_includes claude_content, '<!-- tesseract-rule-start -->'
+    assert_includes claude_content, 'tesseract/rule.md'
+    assert_includes claude_content, '<!-- tesseract-rule-end -->'
+
+    # Verify .cursorrules was created
+    cursor_file = File.join(existing_repo, '.cursorrules')
+    assert File.file?(cursor_file)
+    assert_includes File.read(cursor_file), 'tesseract/rule.md'
+
+    # Test idempotency - running sync again replaces marker block without duplicating
+    Tesseract::Tools.sync_project_rules(store, project_path: existing_repo)
+    claude_content_v2 = File.read(claude_file)
+    assert_equal 1, claude_content_v2.scan('<!-- tesseract-rule-start -->').size
+    assert_includes claude_content_v2, 'npm run build'
+  end
+
+  def test_cli_sync_rules_command
+    existing_repo = File.join(@project_dir, 'cli-sync-proj')
+    FileUtils.mkdir_p(existing_repo)
+    store = Tesseract::Store.new(domains_root: @tmpdir, cwd: existing_repo)
+    store.create_domain('cli-sync-proj')
+    File.symlink(File.join(@tmpdir, 'cli-sync-proj'), File.join(existing_repo, 'tesseract'))
+
+    out, = capture_io do
+      cli = Tesseract::CLI.new(['sync-rules', 'claude', 'cursor'], existing_repo)
+      cli.run
+    end
+
+    assert_includes out, 'Successfully synchronized'
+    assert File.file?(File.join(existing_repo, 'CLAUDE.md'))
+    assert File.file?(File.join(existing_repo, '.cursorrules'))
+    refute File.file?(File.join(existing_repo, 'GEMINI.md'))
   end
 
   def test_cli_config_overview
