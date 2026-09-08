@@ -1,0 +1,83 @@
+{
+  "name": "tesseract-hyperfold",
+  "displayName": "Tesseract Hyperfold",
+  "description": "4D Knowledge Hyperfolding bridge for Tesseract & IDE Chat",
+  "version": "0.1.0",
+  "publisher": "tesseract",
+  "engines": {
+    "vscode": "^1.88.0"
+  },
+  "categories": [
+    "Other",
+    "Machine Learning"
+  ],
+  "activationEvents": [
+    "onLanguage:markdown",
+    "onCommand:tesseract.hyperfold"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "tesseract.hyperfold",
+        "title": "Tesseract: Hyperfold (超維摺疊)",
+        "icon": {
+          "dark": "./media/hyperfold-dark.svg",
+          "light": "./media/hyperfold-light.svg"
+        },
+        "category": "Tesseract"
+      },
+      {
+        "command": "tesseract.applyHyperfold",
+        "title": "Tesseract: 套用超維摺疊 (Apply Hyperfold)",
+        "category": "Tesseract"
+      },
+      {
+        "command": "tesseract.discardHyperfold",
+        "title": "Tesseract: 取消超維摺疊 (Discard Hyperfold)",
+        "category": "Tesseract"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "tesseract.hyperfold",
+          "when": "editorLangId == markdown",
+          "group": "navigation"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "tesseract.hyperfold",
+        "key": "ctrl+alt+h",
+        "mac": "cmd+alt+h",
+        "when": "editorTextFocus && editorLangId == markdown"
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "tesseract.agent",
+        "name": "tesseract",
+        "fullName": "Tesseract Hyperfold",
+        "description": "Tesseract 4D 知識庫超維摺疊代理 (Plan Review)",
+        "commands": [
+          {
+            "name": "hyperfold",
+            "description": "分析筆記手動修改，進行認知強化、規則萃取與維度織網"
+          }
+        ]
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.88.0",
+    "typescript": "^5.4.0"
+  }
+}

@@ -1,0 +1,11 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Rear Cube (in the 4th dimension) -->
+  <rect x="5.5" y="2" width="8.5" height="8.5" rx="1" stroke="#16A34A" stroke-width="1.1" stroke-dasharray="1.5 1.5" opacity="0.75"/>
+  <!-- 4D Projection Rays -->
+  <path d="M2 5.5L5.5 2" stroke="#15803D" stroke-width="1.1" stroke-linecap="round"/>
+  <path d="M10.5 5.5L14 2" stroke="#15803D" stroke-width="1.1" stroke-linecap="round"/>
+  <path d="M10.5 14L14 10.5" stroke="#15803D" stroke-width="1.1" stroke-linecap="round"/>
+  <path d="M2 14L5.5 10.5" stroke="#15803D" stroke-width="1.1" stroke-linecap="round"/>
+  <!-- Front Cube (solid, bold) -->
+  <rect x="2" y="5.5" width="8.5" height="8.5" rx="1" stroke="#15803D" stroke-width="1.3" fill="#FFFFFF" fill-opacity="0.6"/>
+</svg>

@@ -322,6 +322,21 @@ module Tesseract
       end
 
       puts ''
+      puts '── 自動派發雲端 AI Skills ──────────────────'
+      skill_results = installer.install_skills(store)
+      if skill_results.empty?
+        puts '  （雲端 skills 已就緒）'
+      else
+        skill_results.each do |res|
+          if res[:success]
+            puts "  ✓ 已同步 Skill [#{res[:skill]}] 至 #{res[:target]} (#{res[:path]})"
+          else
+            puts "  ✗ 同步 Skill [#{res[:skill]}] 至 #{res[:target]} 失敗: #{res[:error]}"
+          end
+        end
+      end
+
+      puts ''
       puts '=== 初始化完成 ==='
       puts ''
       puts '接下來您可以：'
@@ -402,6 +417,21 @@ module Tesseract
             puts "  ✓ 已成功註冊至 #{res[:name]} (#{res[:path]})"
           else
             puts "  ✗ 註冊 #{res[:name]} 失敗: #{res[:error]}"
+          end
+        end
+      end
+
+      puts ''
+      puts '── 自動派發雲端 AI Skills ──────────────────'
+      skill_results = installer.install_skills(@store)
+      if skill_results.empty?
+        puts '  （雲端 skills 已就緒）'
+      else
+        skill_results.each do |res|
+          if res[:success]
+            puts "  ✓ 已同步 Skill [#{res[:skill]}] 至 #{res[:target]} (#{res[:path]})"
+          else
+            puts "  ✗ 同步 Skill [#{res[:skill]}] 至 #{res[:target]} 失敗: #{res[:error]}"
           end
         end
       end

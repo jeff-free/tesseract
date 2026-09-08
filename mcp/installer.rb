@@ -13,13 +13,73 @@ module Tesseract
     end
 
     # Auto-detects and installs MCP config into all found AI tool configuration files
-    def install_all
+    def install_all(store = nil)
       results = []
       results << install_claude_code
       results << install_antigravity
       results << install_claude_desktop
       results << install_cursor
       results.compact
+    end
+
+    # Installs and symlinks Tesseract skills from iCloud Vault into AI agents
+    def install_skills(store)
+      return [] unless store
+
+      store.ensure_default_skills!
+      results = []
+
+      # 1. Google Antigravity / Gemini Skills (~/.gemini/config/skills/)
+      gemini_root = Pathname.new(File.expand_path('~/.gemini/config'))
+      if File.exist?(File.expand_path('~/.gemini'))
+        skills_dir = gemini_root.join('skills')
+        FileUtils.mkdir_p(skills_dir)
+
+        store.list_skills.each do |skill|
+          target = skills_dir.join(skill[:name])
+          source_dir = Pathname.new(skill[:path]).parent
+
+          if target.symlink? || target.file?
+            target.unlink
+          end
+
+          unless target.exist?
+            begin
+              File.symlink(source_dir.to_s, target.to_s)
+              results << { target: 'Google Antigravity / Gemini', skill: skill[:name], path: target.to_s, success: true }
+            rescue StandardError => e
+              results << { target: 'Google Antigravity / Gemini', skill: skill[:name], error: e.message, success: false }
+            end
+          end
+        end
+      end
+
+      # 2. Claude Code Global Skills (~/.claude/skills/)
+      claude_root = Pathname.new(File.expand_path('~/.claude'))
+      if claude_root.exist?
+        skills_dir = claude_root.join('skills')
+        FileUtils.mkdir_p(skills_dir)
+
+        store.list_skills.each do |skill|
+          target = skills_dir.join(skill[:name])
+          source_dir = Pathname.new(skill[:path]).parent
+
+          if target.symlink? || target.file?
+            target.unlink
+          end
+
+          unless target.exist?
+            begin
+              File.symlink(source_dir.to_s, target.to_s)
+              results << { target: 'Claude Code', skill: skill[:name], path: target.to_s, success: true }
+            rescue StandardError => e
+              results << { target: 'Claude Code', skill: skill[:name], error: e.message, success: false }
+            end
+          end
+        end
+      end
+
+      results
     end
 
     # Checks registration status across all AI tools

@@ -26,10 +26,55 @@ module Tesseract
       @domains_root.join(GLOBAL_DIR_NAME)
     end
 
+    def global_skills_dir
+      global_dir.join('skills')
+    end
+
     def ensure_root_exists!
       FileUtils.mkdir_p(global_dir.join('assets'))
+      FileUtils.mkdir_p(global_skills_dir)
       ensure_index_file(global_dir, '_global', 'Global personal knowledge base, general architecture decisions, and cross-project preferences')
       ensure_rule_file(global_dir, '_global')
+      ensure_default_skills!
+    end
+
+    def ensure_default_skills!
+      hyperfold_dir = global_skills_dir.join('hyperfold')
+      FileUtils.mkdir_p(hyperfold_dir)
+      skill_file = hyperfold_dir.join('SKILL.md')
+      return if skill_file.exist?
+
+      template_path = Pathname.new(File.expand_path('../../templates/skills/hyperfold/SKILL.md', __FILE__))
+      if template_path.file?
+        FileUtils.cp(template_path, skill_file)
+      else
+        skill_file.write("# Tesseract Hyperfold Skill\n", encoding: 'UTF-8')
+      end
+    end
+
+    def list_skills
+      ensure_default_skills!
+      skills = []
+      Dir.glob(global_skills_dir.join('*/SKILL.md')).sort.each do |file|
+        dir_name = File.basename(File.dirname(file))
+        content = (File.read(file, encoding: 'UTF-8') rescue '')
+        name_match = content.match(/^name:\s*(.+)$/)
+        desc_match = content.match(/^description:\s*(.+)$/)
+        skills << {
+          id: dir_name,
+          name: name_match ? name_match[1].strip : dir_name,
+          description: desc_match ? desc_match[1].strip : 'Tesseract Skill',
+          path: file
+        }
+      end
+      skills
+    end
+
+    def read_skill(skill_name)
+      target = global_skills_dir.join(skill_name.to_s, 'SKILL.md')
+      return nil unless target.file?
+
+      target.read(encoding: 'UTF-8')
     end
 
     # Resolves domain name: "global" / "_global" -> _global folder, "auto" -> based on cwd, other -> subfolder
@@ -289,6 +334,36 @@ module Tesseract
       MARKDOWN
 
       rule_file.write(content, encoding: 'UTF-8')
+    end
+
+    def append_rule(rule_text, domain: 'auto', category: '提煉偏好與習慣 (Hyperfold)')
+      return { success: false, error: 'Rule text cannot be empty' } if rule_text.to_s.strip.empty?
+
+      domain_dir = resolve_domain_dir(domain)
+      FileUtils.mkdir_p(domain_dir)
+      ensure_rule_file(domain_dir, domain_dir.basename.to_s)
+
+      rule_file = domain_dir.join('rule.md')
+      content = rule_file.read(encoding: 'UTF-8')
+      clean_rule = rule_text.strip.sub(/^[-*]\s*/, '')
+
+      # Avoid duplicate rules
+      return { success: true, path: rule_file.to_s, rule: clean_rule, duplicate: true } if content.include?(clean_rule)
+
+      header = "## #{category}"
+      if content.include?(header)
+        # Append right after the header section
+        content = content.sub(/(#{Regexp.escape(header)}.*?)(\n## |\z)/m) do
+          prefix = Regexp.last_match(1).rstrip
+          suffix = Regexp.last_match(2)
+          "#{prefix}\n- #{clean_rule}\n#{suffix}"
+        end
+      else
+        content = "#{content.rstrip}\n\n#{header}\n- #{clean_rule}\n"
+      end
+
+      rule_file.write(content, encoding: 'UTF-8')
+      { success: true, path: rule_file.to_s, rule: clean_rule, duplicate: false }
     end
 
     private

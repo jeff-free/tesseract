@@ -125,16 +125,77 @@ class TestTesseractStore < Minitest::Test
     assert_equal 'linked-project', @store.detect_domain_from_cwd
     assert_equal 'linked-project', @store.current_domain_name
   end
+
+  def test_append_rule
+    res = @store.append_rule('Prefer Redis Token Bucket for rate limits', domain: 'global')
+    assert res[:success]
+    assert_equal false, res[:duplicate]
+
+    rule_file = File.join(@tmpdir, '_global', 'rule.md')
+    assert File.exist?(rule_file)
+    content = File.read(rule_file)
+    assert_includes content, 'Prefer Redis Token Bucket for rate limits'
+    assert_includes content, '## 提煉偏好與習慣 (Hyperfold)'
+
+    # Test duplicate prevention
+    dup_res = @store.append_rule('Prefer Redis Token Bucket for rate limits', domain: 'global')
+    assert dup_res[:success]
+    assert_equal true, dup_res[:duplicate]
+  end
+
+  def test_hyperfold_tool
+    res = Tesseract::Tools.handle_tool_call(
+      @store,
+      'tesseract_hyperfold',
+      {
+        'topic' => 'auth-ratelimit',
+        'content' => 'Rate limit implementation details.',
+        'rule' => 'Always use sliding window rate limiting',
+        'rule_domain' => 'global',
+        'backlinks' => ['[[api-gateway]]'],
+        'summary' => 'Added rate limit guidelines'
+      }
+    )
+
+    text = res.dig(:content, 0, :text)
+    assert_includes text, 'Hyperfold Applied'
+    assert_includes text, 'Rule committed'
+    assert_includes text, 'Topic updated'
+
+    # Verify content has backlink
+    read_res = @store.read_topic(topic: 'auth-ratelimit', domain: 'global')
+    assert_includes read_res[:content], '[[api-gateway]]'
+  end
+
+  def test_skills_initialization_and_listing
+    skills = @store.list_skills
+    assert skills.any?, 'Default skills should be initialized'
+    hyperfold = skills.find { |s| s[:name] == 'tesseract-hyperfold' || s[:id] == 'hyperfold' }
+    refute_nil hyperfold, 'tesseract-hyperfold skill should exist in _global/skills/'
+
+    content = @store.read_skill('hyperfold')
+    refute_nil content
+    assert_includes content, 'tesseract-hyperfold'
+    assert_includes content, 'Hyperfold'
+
+    # Verify Prompts integration
+    prompts = Tesseract::Prompts.list_prompts(@store)
+    found = prompts.find { |p| p[:name] == 'tesseract-hyperfold' || p[:name] == 'tesseract_hyperfold_guide' }
+    refute_nil found, 'Dynamic skills should be exposed in Prompts.list_prompts'
+  end
 end
 
 class TestMCPInstaller < Minitest::Test
   def setup
     @tmpdir = Dir.mktmpdir('tesseract_inst_test_')
-    @mcp_bin = '/usr/local/bin/tesseract-mcp'
+    @old_home = ENV['HOME']
+    ENV['HOME'] = @tmpdir
+    @mcp_bin = File.join(@tmpdir, 'bin', 'tesseract-mcp')
     @installer = Tesseract::MCPInstaller.new(@mcp_bin)
   end
 
   def teardown
+    ENV['HOME'] = @old_home
     FileUtils.remove_entry(@tmpdir) if File.exist?(@tmpdir)
   end
 
@@ -348,6 +409,7 @@ class TestMCPProtocolIntegration < Minitest::Test
     assert_includes tool_names, 'tesseract_read_knowledge'
     assert_includes tool_names, 'tesseract_save_knowledge'
     assert_includes tool_names, 'tesseract_search_knowledge'
+    assert_includes tool_names, 'tesseract_hyperfold'
 
     # 3. Save knowledge response
     save_res = responses.find { |r| r['id'] == 3 }

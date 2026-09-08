@@ -79,7 +79,7 @@ module Tesseract
       when 'resources/read'
         handle_resources_read(id, params)
       when 'prompts/list'
-        send_response(id, { prompts: Prompts::PROMPTS_LIST })
+        send_response(id, { prompts: Prompts.list_prompts(@store) })
       when 'prompts/get'
         handle_prompts_get(id, params)
       else
@@ -189,7 +189,7 @@ module Tesseract
     def handle_prompts_get(id, params)
       name = params['name']
       args = params['arguments'] || {}
-      prompt = Prompts.get_prompt(name, args)
+      prompt = Prompts.get_prompt(name, args, store: @store)
 
       if prompt
         send_response(id, prompt)

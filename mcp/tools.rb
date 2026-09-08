@@ -131,6 +131,50 @@ module Tesseract
           },
           required: []
         }
+      },
+      {
+        name: 'tesseract_hyperfold',
+        description: 'Commit 4D Hyperfold results: atomically records extracted rules into rule.md, updates topic content with backlinks, and registers index.md changelog.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            topic: {
+              type: 'string',
+              description: 'Topic name (e.g. "auth-flow", "db-schema").'
+            },
+            content: {
+              type: 'string',
+              description: 'Optional updated Markdown content for this topic.'
+            },
+            rule: {
+              type: 'string',
+              description: 'Optional extracted engineering rule or preference to append to rule.md.'
+            },
+            rule_domain: {
+              type: 'string',
+              description: 'Domain for the rule: "auto" (current project rule.md) or "global" (_global/rule.md). Defaults to "auto".'
+            },
+            backlinks: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Optional array of backlinks to append or weave into the topic (e.g. ["[[security-spec]]"]).'
+            },
+            summary: {
+              type: 'string',
+              description: '1-sentence summary for the index.md changelog.'
+            },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Tags to associate with this topic.'
+            },
+            domain: {
+              type: 'string',
+              description: 'Target domain for the topic ("auto", "global", etc.). Defaults to "auto".'
+            }
+          },
+          required: ['topic']
+        }
       }
     ].freeze
 
@@ -223,6 +267,51 @@ module Tesseract
         project_path = args['project_path']
         res = sync_project_rules(store, targets: targets, project_path: project_path)
         format_text(res[:message])
+
+      when 'tesseract_hyperfold'
+        topic = args['topic']
+        content = args['content']
+        rule = args['rule']
+        rule_domain = args['rule_domain'] || 'auto'
+        backlinks = args['backlinks'] || []
+        domain = args['domain'] || 'auto'
+        summary = args['summary'] || 'Hyperfold review and reinforcement'
+        tags = args['tags'] || []
+
+        reports = []
+
+        # 1. Append rule if provided
+        if rule && !rule.strip.empty?
+          rule_res = store.append_rule(rule, domain: rule_domain)
+          if rule_res[:success]
+            dup_msg = rule_res[:duplicate] ? ' (already existed)' : ''
+            reports << "✦ Rule committed to #{File.basename(rule_res[:path])}#{dup_msg}: \"#{rule_res[:rule]}\""
+          else
+            reports << "⚠ Failed to commit rule: #{rule_res[:error]}"
+          end
+        end
+
+        # 2. Update content if provided
+        if content && !content.strip.empty?
+          if backlinks.any?
+            missing_links = backlinks.reject { |link| content.include?(link) }
+            if missing_links.any?
+              content = "#{content.rstrip}\n\n## 維度關聯 (Hyperfold Backlinks)\n#{missing_links.map { |l| "- #{l}" }.join("\n")}\n"
+            end
+          end
+
+          save_res = store.save_topic(
+            topic: topic,
+            content: content,
+            domain: domain,
+            summary: summary,
+            tags: tags
+          )
+          reports << "✦ Topic updated: #{save_res[:message]}"
+        end
+
+        reports << "✦ Hyperfold complete for topic [[#{topic}]]." if reports.empty?
+        format_text("### ⬡ Tesseract Hyperfold Applied\n\n#{reports.join("\n")}")
 
       else
         raise ArgumentError, "Unknown tool: #{name}"

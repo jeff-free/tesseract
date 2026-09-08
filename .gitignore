@@ -13,3 +13,8 @@ domains/
 
 # Ruby / IDE
 .ruby-lsp/
+
+# VS Code Extension
+extensions/vscode/node_modules/
+extensions/vscode/out/
+*.vsix

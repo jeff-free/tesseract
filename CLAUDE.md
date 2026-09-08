@@ -6,6 +6,7 @@
 - `bin/tesseract`：CLI 工具引導入口（由 `mcp/cli.rb` 驅動）
 - `bin/tesseract-mcp`：MCP Server 執行入口（由 `mcp/server.rb` 驅動）
 - `mcp/`：核心 Ruby 模組（`store.rb`, `server.rb`, `tools.rb`, `installer.rb`, `prompts.rb`, `cli.rb`）
+- `extensions/vscode/`：Tesseract Hyperfold VS Code / Antigravity 擴充套件（TypeScript）
 - `test/test_mcp_server.rb`：單元與整合測試套件
 
 ## 測試指令
