@@ -33,7 +33,8 @@ module Tesseract
     def ensure_root_exists!
       FileUtils.mkdir_p(global_dir.join('assets'))
       FileUtils.mkdir_p(global_skills_dir)
-      ensure_index_file(global_dir, '_global', 'Global personal knowledge base, general architecture decisions, and cross-project preferences')
+      ensure_index_file(global_dir, '_global',
+                        'Global personal knowledge base, general architecture decisions, and cross-project preferences')
       ensure_rule_file(global_dir, '_global')
       ensure_default_skills!
     end
@@ -44,7 +45,7 @@ module Tesseract
       skill_file = hyperfold_dir.join('SKILL.md')
       return if skill_file.exist?
 
-      template_path = Pathname.new(File.expand_path('../../templates/skills/hyperfold/SKILL.md', __FILE__))
+      template_path = Pathname.new(File.expand_path('../templates/skills/hyperfold/SKILL.md', __dir__))
       if template_path.file?
         FileUtils.cp(template_path, skill_file)
       else
@@ -55,9 +56,19 @@ module Tesseract
     def list_skills
       ensure_default_skills!
       skills = []
-      Dir.glob(global_skills_dir.join('*/SKILL.md')).sort.each do |file|
+      glob_results = begin
+        Dir.glob(global_skills_dir.join('*/SKILL.md')).sort
+      rescue Errno::EPERM, Errno::EACCES => e
+        warn "⚠️  Skills directory not accessible (#{e.message}) — skipping skill scan"
+        []
+      end
+      glob_results.each do |file|
         dir_name = File.basename(File.dirname(file))
-        content = (File.read(file, encoding: 'UTF-8') rescue '')
+        content = begin
+          File.read(file, encoding: 'UTF-8')
+        rescue StandardError
+          ''
+        end
         name_match = content.match(/^name:\s*(.+)$/)
         desc_match = content.match(/^description:\s*(.+)$/)
         skills << {
@@ -132,7 +143,7 @@ module Tesseract
       return [] unless domain_dir.exist?
 
       topics = []
-      domain_name = (domain_dir == global_dir) ? '_global' : domain_dir.basename.to_s
+      domain_name = domain_dir == global_dir ? '_global' : domain_dir.basename.to_s
 
       domain_dir.children.select { |f| f.file? && f.extname == '.md' }.sort.each do |file|
         topic_name = file.basename('.md').to_s
@@ -165,7 +176,7 @@ module Tesseract
       end
 
       {
-        domain: (domain_dir == global_dir) ? '_global' : domain_dir.basename.to_s,
+        domain: domain_dir == global_dir ? '_global' : domain_dir.basename.to_s,
         topic: clean_topic,
         content: file_path.read(encoding: 'UTF-8'),
         found: true,
@@ -191,7 +202,7 @@ module Tesseract
       file_path.write(final_content, encoding: 'UTF-8')
 
       # Ensure index.md exists and is updated
-      domain_name = (domain_dir == global_dir) ? '_global' : domain_dir.basename.to_s
+      domain_name = domain_dir == global_dir ? '_global' : domain_dir.basename.to_s
       ensure_index_file(domain_dir, domain_name)
       update_index_files_section(domain_dir)
 
@@ -225,7 +236,7 @@ module Tesseract
       target_dirs.each do |dir|
         next unless dir.exist?
 
-        dom_name = (dir == global_dir) ? '_global' : dir.basename.to_s
+        dom_name = dir == global_dir ? '_global' : dir.basename.to_s
 
         dir.children.select { |f| f.file? && f.extname == '.md' }.each do |file|
           topic_name = file.basename('.md').to_s
@@ -240,17 +251,17 @@ module Tesseract
           match_tags = tags.any? { |t| t.downcase.include?(q) }
           match_content = content.downcase.include?(q)
 
-          if match_topic || match_title || match_tags || match_content
-            snippet = extract_snippet(content, q)
-            results << {
-              domain: dom_name,
-              topic: topic_name,
-              title: title,
-              tags: tags,
-              path: file.to_s,
-              snippet: snippet
-            }
-          end
+          next unless match_topic || match_title || match_tags || match_content
+
+          snippet = extract_snippet(content, q)
+          results << {
+            domain: dom_name,
+            topic: topic_name,
+            title: title,
+            tags: tags,
+            path: file.to_s,
+            snippet: snippet
+          }
         end
       end
 
@@ -262,9 +273,7 @@ module Tesseract
       raise ArgumentError, 'Domain name contains invalid characters' unless clean_name.match?(/\A[a-zA-Z0-9_-]+\z/)
 
       domain_dir = @domains_root.join(clean_name)
-      if domain_dir.exist?
-        return { success: false, message: "Domain '#{clean_name}' already exists at #{domain_dir}" }
-      end
+      return { success: false, message: "Domain '#{clean_name}' already exists at #{domain_dir}" } if domain_dir.exist?
 
       FileUtils.mkdir_p(domain_dir.join('assets'))
       ensure_index_file(domain_dir, clean_name, description)
@@ -285,7 +294,7 @@ module Tesseract
         next unless dir.exist? && dir.join('index.md').exist?
 
         update_index_files_section(dir)
-        reindexed << ((dir == global_dir) ? '_global' : dir.basename.to_s)
+        reindexed << (dir == global_dir ? '_global' : dir.basename.to_s)
       end
       reindexed
     end
@@ -351,16 +360,16 @@ module Tesseract
       return { success: true, path: rule_file.to_s, rule: clean_rule, duplicate: true } if content.include?(clean_rule)
 
       header = "## #{category}"
-      if content.include?(header)
-        # Append right after the header section
-        content = content.sub(/(#{Regexp.escape(header)}.*?)(\n## |\z)/m) do
-          prefix = Regexp.last_match(1).rstrip
-          suffix = Regexp.last_match(2)
-          "#{prefix}\n- #{clean_rule}\n#{suffix}"
-        end
-      else
-        content = "#{content.rstrip}\n\n#{header}\n- #{clean_rule}\n"
-      end
+      content = if content.include?(header)
+                  # Append right after the header section
+                  content.sub(/(#{Regexp.escape(header)}.*?)(\n## |\z)/m) do
+                    prefix = Regexp.last_match(1).rstrip
+                    suffix = Regexp.last_match(2)
+                    "#{prefix}\n- #{clean_rule}\n#{suffix}"
+                  end
+                else
+                  "#{content.rstrip}\n\n#{header}\n- #{clean_rule}\n"
+                end
 
       rule_file.write(content, encoding: 'UTF-8')
       { success: true, path: rule_file.to_s, rule: clean_rule, duplicate: false }
@@ -372,10 +381,12 @@ module Tesseract
       content = file_or_content.is_a?(Pathname) ? file_or_content.read(encoding: 'UTF-8') : file_or_content.to_s
       lines = content.lines
 
-      title = lines.find { |l| l.start_with?('# ') }&.sub(/^#\s*/, '')&.strip || (file_or_content.is_a?(Pathname) ? file_or_content.basename('.md').to_s : 'Untitled')
+      title = lines.find do |l|
+        l.start_with?('# ')
+      end&.sub(/^#\s*/, '')&.strip || (file_or_content.is_a?(Pathname) ? file_or_content.basename('.md').to_s : 'Untitled')
       tags = []
       lines.each do |l|
-        tags += l.scan(/#[a-zA-Z0-9_\-\/]+/)
+        tags += l.scan(%r{#[a-zA-Z0-9_\-/]+})
       end
 
       [title, tags.uniq]
@@ -413,7 +424,6 @@ module Tesseract
       res.join
     end
 
-
     def update_index_files_section(domain_dir)
       index_file = domain_dir.join('index.md')
       return unless index_file.exist?
@@ -437,9 +447,7 @@ module Tesseract
       # Replace ## Files section
       new_content = content.sub(/## Files\n.*?(?=\n## |\Z)/m, "## Files\n#{files_block}")
       # If replacement did not happen (section missing), append it
-      unless new_content.include?('## Files')
-        new_content += "\n## Files\n#{files_block}"
-      end
+      new_content += "\n## Files\n#{files_block}" unless new_content.include?('## Files')
 
       index_file.write(new_content, encoding: 'UTF-8')
     end
@@ -449,13 +457,12 @@ module Tesseract
       return unless index_file.exist?
 
       content = index_file.read(encoding: 'UTF-8')
-      if content.include?('## Changelog')
-        new_content = content.rstrip + "\n#{entry}\n"
-        index_file.write(new_content, encoding: 'UTF-8')
-      else
-        new_content = "#{content.rstrip}\n\n## Changelog\n#{entry}\n"
-        index_file.write(new_content, encoding: 'UTF-8')
-      end
+      new_content = if content.include?('## Changelog')
+                      content.rstrip + "\n#{entry}\n"
+                    else
+                      "#{content.rstrip}\n\n## Changelog\n#{entry}\n"
+                    end
+      index_file.write(new_content, encoding: 'UTF-8')
     end
   end
 end

@@ -4,6 +4,11 @@
   "description": "4D Knowledge Hyperfolding bridge for Tesseract & IDE Chat",
   "version": "0.1.0",
   "publisher": "tesseract",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jfree-eh/tesseract"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.88.0"
   },
@@ -19,7 +24,8 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies"
   },
   "contributes": {
     "commands": [
@@ -78,6 +84,7 @@
   "devDependencies": {
     "@types/node": "^20.x",
     "@types/vscode": "^1.88.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "@vscode/vsce": "^3.0.0"
   }
 }
