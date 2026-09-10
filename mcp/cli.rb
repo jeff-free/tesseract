@@ -44,7 +44,7 @@ module Tesseract
       when 'help', '--help', '-h'
         cmd_help
       else
-        $stderr.puts "錯誤：不認識的指令 '#{command}'\n\n"
+        warn "錯誤：不認識的指令 '#{command}'\n\n"
         cmd_help
         exit 1
       end
@@ -52,10 +52,28 @@ module Tesseract
 
     private
 
+    # Single entry point for every interactive question the CLI asks.
+    #
+    # Returns `default` without printing or reading when stdin is not a TTY — a piped
+    # invocation, a CI run, or the test suite. Reading stdin unconditionally used to hang the
+    # process (it waits forever for a human) or crash on `nil.strip` at EOF, and which of the
+    # two you got depended on how the caller happened to be launched. Callers must therefore
+    # supply a sensible `default` for the non-interactive path.
+    def ask(question, default: nil)
+      return default unless $stdin.tty?
+
+      print question
+      answer = $stdin.gets
+      return default if answer.nil? # EOF
+
+      answer = answer.strip
+      answer.empty? ? default : answer
+    end
+
     def cmd_new(args)
       if args.empty?
-        $stderr.puts '用法: tesseract new <專案名稱> [專案路徑]'
-        $stderr.puts '範例: tesseract new honeymoon'
+        warn '用法: tesseract new <專案名稱> [專案路徑]'
+        warn '範例: tesseract new honeymoon'
         exit 1
       end
 
@@ -114,7 +132,8 @@ module Tesseract
         end
       else
         project_path = @cwd
-        domain_name = project_path.basename.to_s
+        default_name = project_path.basename.to_s
+        domain_name = ask("Domain 名稱 [#{default_name}]: ", default: default_name)
       end
 
       domain_dir = @store.domains_root.join(domain_name)
@@ -150,9 +169,7 @@ module Tesseract
           puts "✓ Symlink 已存在且正確：#{link_path} → #{domain_dir}"
         else
           puts "警告：#{link_path} 目前指向 #{existing}"
-          print "是否重新導向至 #{domain_dir}？[Y/n] "
-          answer = $stdin.gets.strip
-          answer = 'Y' if answer.empty?
+          answer = ask("是否重新導向至 #{domain_dir}？[Y/n] ", default: 'Y')
           if answer.match?(/^[Yy]$/)
             link_path.unlink
             File.symlink(domain_dir.to_s, link_path.to_s)
@@ -163,8 +180,8 @@ module Tesseract
           end
         end
       elsif link_path.exist?
-        $stderr.puts "錯誤：#{link_path} 已存在且是實體檔案/資料夾，不是 symlink！"
-        $stderr.puts "請先更名或移開 #{link_path} 後再執行 link。"
+        warn "錯誤：#{link_path} 已存在且是實體檔案/資料夾，不是 symlink！"
+        warn "請先更名或移開 #{link_path} 後再執行 link。"
         exit 1
       else
         File.symlink(domain_dir.to_s, link_path.to_s)
@@ -183,7 +200,7 @@ module Tesseract
 
     def cmd_new_domain(args)
       if args.empty?
-        $stderr.puts '用法: tesseract new-domain <名稱> [說明]'
+        warn '用法: tesseract new-domain <名稱> [說明]'
         exit 1
       end
 
@@ -196,7 +213,7 @@ module Tesseract
         puts "  - #{res[:path]}/index.md"
         puts "  - #{res[:path]}/assets/"
       else
-        $stderr.puts "錯誤：#{res[:message]}"
+        warn "錯誤：#{res[:message]}"
         exit 1
       end
     end
@@ -285,12 +302,8 @@ module Tesseract
       default_path = Store::DEFAULT_ICLOUD_PATH
       puts "知識庫路徑（iCloud Vault，預設：#{default_path}）"
 
-      input_path = args.first
-      if input_path.nil?
-        print '請輸入路徑，或直接按 Enter 使用預設值: '
-        input = $stdin.gets.strip
-        input_path = input.empty? ? default_path : input
-      end
+      input_path = args.first ||
+                   ask('請輸入路徑，或直接按 Enter 使用預設值: ', default: default_path)
 
       target_dir = Pathname.new(File.expand_path(input_path))
       FileUtils.mkdir_p(target_dir)
@@ -393,14 +406,13 @@ module Tesseract
       puts '  tesseract config mcp show      -> 顯示手動設定用的 JSON 代碼'
       puts ''
 
-      if interactive
-        print '是否要立即自動更新/註冊 MCP 設定到所有工具？[y/N] '
-        answer = $stdin.gets.strip
-        if answer.match?(/^[Yy]$/)
-          puts ''
-          cmd_mcp_install
-        end
-      end
+      return unless interactive
+
+      answer = ask('是否要立即自動更新/註冊 MCP 設定到所有工具？[y/N] ', default: 'N')
+      return unless answer.match?(/^[Yy]$/)
+
+      puts ''
+      cmd_mcp_install
     end
 
     def cmd_mcp_install
@@ -439,7 +451,7 @@ module Tesseract
     end
 
     def cmd_mcp_config(_args)
-      mcp_bin = Pathname.new(File.expand_path('../../bin/tesseract-mcp', __FILE__))
+      mcp_bin = Pathname.new(File.expand_path('../bin/tesseract-mcp', __dir__))
 
       puts '=== Tesseract MCP Configuration ==='
       puts ''
@@ -454,33 +466,33 @@ module Tesseract
       puts '在 ~/.gemini/antigravity-ide/mcp_config.json 或專案 .gemini/mcp_config.json 加入：'
       puts ''
       puts JSON.pretty_generate({
-        mcpServers: {
-          tesseract: {
-            command: mcp_bin.to_s
-          }
-        }
-      })
+                                  mcpServers: {
+                                    tesseract: {
+                                      command: mcp_bin.to_s
+                                    }
+                                  }
+                                })
       puts ''
       puts '── 3. Claude Desktop (claude_desktop_config.json) ─────'
       puts '路徑: ~/Library/Application Support/Claude/claude_desktop_config.json'
       puts ''
       puts JSON.pretty_generate({
-        mcpServers: {
-          tesseract: {
-            command: mcp_bin.to_s
-          }
-        }
-      })
+                                  mcpServers: {
+                                    tesseract: {
+                                      command: mcp_bin.to_s
+                                    }
+                                  }
+                                })
       puts ''
       puts '── 4. Cursor (.cursor/mcp.json) ───────────────────────'
       puts ''
       puts JSON.pretty_generate({
-        mcpServers: {
-          tesseract: {
-            command: mcp_bin.to_s
-          }
-        }
-      })
+                                  mcpServers: {
+                                    tesseract: {
+                                      command: mcp_bin.to_s
+                                    }
+                                  }
+                                })
       puts ''
     end
 
@@ -516,6 +528,4 @@ module Tesseract
   end
 end
 
-if __FILE__ == $PROGRAM_NAME
-  Tesseract::CLI.new.run
-end
+Tesseract::CLI.new.run if __FILE__ == $PROGRAM_NAME
