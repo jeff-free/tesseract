@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# The suite must run on a machine with no LANG/LC_ALL (the very environment that produced
+# the Encoding::CompatibilityError this file regression-tests). Without this, the test
+# process itself reads files and child stdout as US-ASCII and blows up on its own fixtures.
+Encoding.default_external = Encoding::UTF_8
+Encoding.default_internal = nil
+
 require 'minitest/autorun'
 require 'tmpdir'
 require 'pathname'
@@ -220,14 +226,25 @@ class TestMCPInstaller < Minitest::Test
 end
 
 class TestTesseractCLI < Minitest::Test
+  # A stdin that is never a TTY and never blocks. Pinned for every CLI test so a suite run
+  # from a real terminal cannot stop on an interactive prompt waiting for a human — tests
+  # that care about prompting swap in their own stdin via #with_stdin.
+  class NonInteractiveStdin
+    def tty? = false
+    def gets = nil
+  end
+
   def setup
     @tmpdir = Dir.mktmpdir('tesseract_cli_test_')
     @project_dir = Dir.mktmpdir('tesseract_cli_proj_')
     @old_env = ENV['TESSERACT_DOMAINS']
     ENV['TESSERACT_DOMAINS'] = @tmpdir
+    @old_stdin = $stdin
+    $stdin = NonInteractiveStdin.new
   end
 
   def teardown
+    $stdin = @old_stdin
     ENV['TESSERACT_DOMAINS'] = @old_env
     FileUtils.remove_entry(@tmpdir) if File.exist?(@tmpdir)
     FileUtils.remove_entry(@project_dir) if File.exist?(@project_dir)
@@ -270,6 +287,65 @@ class TestTesseractCLI < Minitest::Test
     assert File.file?(File.join(existing_repo, 'tesseract', 'rule.md'))
     refute_includes File.read(File.join(existing_repo, '.gitignore')), 'tesseract'
     assert_includes out, '.git/info/exclude'
+  end
+
+  # Regression: `tesseract link` with no argument asks for a domain name. When stdin is a
+  # TTY that question waits for a human — which silently hung the test suite depending on how
+  # it was launched — and at EOF the old code died on `nil.strip`. CLI#ask must take the
+  # default without touching stdin whenever stdin is not a TTY, so behaviour no longer
+  # depends on the caller's stdin.
+  def test_cli_prompts_use_defaults_when_stdin_is_not_a_tty
+    existing_repo = File.join(@project_dir, 'noninteractive-proj')
+    FileUtils.mkdir_p(existing_repo)
+
+    # A TTY-less stdin that raises if anything reads it: the CLI must not consult stdin here.
+    exploding_stdin = Class.new do
+      def tty? = false
+      def gets = raise('CLI must not read stdin when stdin is not a TTY')
+    end.new
+
+    out = with_stdin(exploding_stdin) do
+      capture_io do
+        cli = Tesseract::CLI.new(['link'], existing_repo)
+        cli.run
+      end.first
+    end
+
+    # Fell back to the directory name instead of asking.
+    assert_includes out, 'noninteractive-proj'
+    refute_includes out, 'Domain 名稱'
+    assert File.symlink?(File.join(existing_repo, 'tesseract'))
+  end
+
+  # Regression: an interactive prompt that reaches EOF (piped input that ran out) must fall
+  # back to its default rather than raising NoMethodError on nil.
+  def test_cli_prompt_falls_back_to_default_on_eof
+    existing_repo = File.join(@project_dir, 'eof-proj')
+    FileUtils.mkdir_p(existing_repo)
+
+    eof_tty_stdin = Class.new do
+      def tty? = true
+      def gets = nil # immediate EOF
+    end.new
+
+    out = with_stdin(eof_tty_stdin) do
+      capture_io do
+        cli = Tesseract::CLI.new(['link'], existing_repo)
+        cli.run
+      end.first
+    end
+
+    assert_includes out, 'Domain 名稱' # it did ask, this time
+    assert_includes out, 'eof-proj'    # and defaulted when the answer never came
+    assert File.symlink?(File.join(existing_repo, 'tesseract'))
+  end
+
+  def with_stdin(replacement)
+    original = $stdin
+    $stdin = replacement
+    yield
+  ensure
+    $stdin = original
   end
 
   def test_sync_project_rules_creates_and_updates_cleanly
@@ -422,5 +498,94 @@ class TestMCPProtocolIntegration < Minitest::Test
     # 5. Search knowledge response
     search_res = responses.find { |r| r['id'] == 5 }
     assert_includes search_res['result']['content'].first['text'], 'proto-test'
+  end
+
+  # Regression: MCP clients send raw UTF-8 JSON, but a server launched without LANG/LC_ALL
+  # boots with US-ASCII stdio. Reading such a line used to raise Encoding::CompatibilityError
+  # in String#strip, outside the rescue, killing the process — the client only saw
+  # "Connection closed". See mcp/server.rb#force_utf8_stdio! / #normalise_line.
+  def test_multibyte_request_under_ascii_locale
+    bin_path = File.expand_path('../bin/tesseract-mcp', __dir__)
+    body = "# 中文標題\n\n狀態轉換：pay_run_finalising → pay_run_approved。破折號 — 也算非 ASCII。"
+
+    requests = [
+      { jsonrpc: '2.0', id: 1, method: 'initialize', params: { clientInfo: { name: 'test-agent', version: '1.0' } } },
+      {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/call',
+        params: {
+          name: 'tesseract_save_knowledge',
+          arguments: { topic: 'cjk-topic', content: body, summary: '中文摘要', domain: 'global' }
+        }
+      },
+      {
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'tools/call',
+        params: { name: 'tesseract_read_knowledge', arguments: { topic: 'cjk-topic', domain: 'global' } }
+      }
+    ]
+
+    input_data = "#{requests.map { |r| JSON.generate(r) }.join("\n")}\n"
+    refute input_data.ascii_only?, 'test input must carry raw multi-byte bytes'
+
+    # LC_ALL=C is what makes Ruby pick US-ASCII for stdio — the condition that used to crash.
+    stdout, stderr, status = Open3.capture3(
+      { 'TESSERACT_DOMAINS' => @tmpdir, 'LC_ALL' => 'C', 'LANG' => 'C' },
+      bin_path,
+      stdin_data: input_data
+    )
+
+    assert status.success?, "Server died on a multi-byte request: #{stderr}"
+    refute_includes stderr, 'Encoding::CompatibilityError'
+
+    responses = stdout.lines.map(&:strip).reject(&:empty?).map { |l| JSON.parse(l) }
+    assert_equal 3, responses.size
+
+    save_res = responses.find { |r| r['id'] == 2 }
+    assert_includes save_res['result']['content'].first['text'], 'Successfully saved'
+
+    read_res = responses.find { |r| r['id'] == 3 }
+    text = read_res['result']['content'].first['text']
+    assert_includes text, '中文標題'
+    assert_includes text, 'pay_run_finalising'
+
+    saved = File.read(File.join(@tmpdir, '_global', 'cjk-topic.md'), encoding: 'UTF-8')
+    assert_includes saved, '狀態轉換'
+  end
+
+  # Regression: one unreadable line must not drop the connection — the server answers with a
+  # JSON-RPC error and keeps serving the requests that follow.
+  def test_malformed_and_invalid_utf8_lines_do_not_kill_server
+    bin_path = File.expand_path('../bin/tesseract-mcp', __dir__)
+
+    init = JSON.generate({ jsonrpc: '2.0', id: 1, method: 'initialize',
+                           params: { clientInfo: { name: 'test-agent', version: '1.0' } } })
+    status_call = JSON.generate({ jsonrpc: '2.0', id: 2, method: 'tools/call',
+                                  params: { name: 'tesseract_get_domain_status', arguments: {} } })
+
+    input_data = +''
+    input_data << init << "\n"
+    input_data << "{ this is not json\n"
+    input_data << "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"ping\",\"broken\":\"\xC3\x28\"}\n" # invalid UTF-8
+    input_data << status_call << "\n"
+
+    stdout, stderr, status = Open3.capture3(
+      { 'TESSERACT_DOMAINS' => @tmpdir, 'LC_ALL' => 'C', 'LANG' => 'C' },
+      bin_path,
+      stdin_data: input_data.b
+    )
+
+    assert status.success?, "Server died on a bad line: #{stderr}"
+
+    responses = stdout.lines.map(&:strip).reject(&:empty?).map { |l| JSON.parse(l) }
+    parse_errors = responses.select { |r| r.dig('error', 'code') == -32_700 }
+    refute_empty parse_errors, 'malformed line should produce a JSON-RPC parse error'
+
+    # The request after the bad lines still gets served.
+    status_res = responses.find { |r| r['id'] == 2 }
+    refute_nil status_res, "server stopped serving after a bad line: #{stdout}"
+    assert_includes status_res['result']['content'].first['text'], 'Tesseract Knowledge Base Status'
   end
 end

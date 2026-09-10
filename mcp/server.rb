@@ -20,11 +20,27 @@ module Tesseract
 
     def initialize(domains_root: nil, cwd: Dir.pwd)
       @store = Store.new(domains_root: domains_root, cwd: cwd)
+      self.class.force_utf8_stdio!
+      # Unbuffered stderr: if the process dies (uncaught exception, SIGKILL), a buffered
+      # log line would be lost and the client would only see "Connection closed".
+      $stderr.sync = true
       @logger = Logger.new($stderr)
       @logger.level = ENV['DEBUG'] ? Logger::DEBUG : Logger::INFO
       @logger.formatter = proc do |severity, datetime, _progname, msg|
         "[#{datetime.strftime('%Y-%m-%d %H:%M:%S')}] [#{severity}] [Tesseract MCP] #{msg}\n"
       end
+    end
+
+    # MCP messages are UTF-8 JSON, but Ruby derives IO encodings from the locale and the
+    # process launched by an MCP client usually has no LANG/LC_ALL — so stdin defaults to
+    # US-ASCII and any multi-byte character in a request makes String#strip raise
+    # Encoding::CompatibilityError, killing the server mid-conversation.
+    def self.force_utf8_stdio!
+      $stdin.set_encoding(Encoding::UTF_8)
+      $stdout.set_encoding(Encoding::UTF_8)
+      $stderr.set_encoding(Encoding::UTF_8)
+    rescue StandardError => e
+      warn "[Tesseract MCP] Could not force UTF-8 on stdio: #{e.class}: #{e.message}"
     end
 
     def start
@@ -33,18 +49,20 @@ module Tesseract
       @logger.info("Working directory: #{@store.cwd}")
 
       $stdin.each_line do |line|
-        trimmed = line.strip
-        next if trimmed.empty?
-
-        @logger.debug("Received raw: #{trimmed}")
+        # Every step here — including #strip — must sit inside the rescue: a malformed or
+        # mis-encoded line is a bad message, not a reason to drop the connection.
         begin
+          trimmed = normalise_line(line)
+          next if trimmed.empty?
+
+          @logger.debug("Received raw: #{trimmed}")
           request = JSON.parse(trimmed)
           handle_message(request)
         rescue JSON::ParserError => e
           @logger.error("JSON parse error: #{e.message}")
           send_error(nil, -32_700, "Parse error: #{e.message}")
         rescue StandardError => e
-          @logger.error("Unexpected error: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+          @logger.error("Unexpected error: #{e.class}: #{e.message}\n#{e.backtrace&.first(5)&.join("\n")}")
           send_error(nil, -32_603, "Internal server error: #{e.message}")
         end
       end
@@ -53,6 +71,15 @@ module Tesseract
     end
 
     private
+
+    # Tags the incoming bytes as UTF-8 regardless of the locale Ruby booted with, so a
+    # multi-byte request cannot raise on #strip. Invalid bytes are replaced rather than
+    # raising — JSON.parse then reports a parse error the client can actually read.
+    def normalise_line(line)
+      utf8 = line.dup.force_encoding(Encoding::UTF_8)
+      utf8 = utf8.scrub('?') unless utf8.valid_encoding?
+      utf8.strip
+    end
 
     def handle_message(req)
       id = req['id']
