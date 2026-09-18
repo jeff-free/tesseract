@@ -40,12 +40,12 @@ module Tesseract
     end
 
     def ensure_default_skills!
-      hyperfold_dir = global_skills_dir.join('hyperfold')
+      hyperfold_dir = global_skills_dir.join('tesseract-hyperfold')
       FileUtils.mkdir_p(hyperfold_dir)
       skill_file = hyperfold_dir.join('SKILL.md')
       return if skill_file.exist?
 
-      template_path = Pathname.new(File.expand_path('../templates/skills/hyperfold/SKILL.md', __dir__))
+      template_path = Pathname.new(File.expand_path('../templates/skills/tesseract-hyperfold/SKILL.md', __dir__))
       if template_path.file?
         FileUtils.cp(template_path, skill_file)
       else

@@ -9,11 +9,11 @@ module Tesseract
     attr_reader :mcp_bin
 
     def initialize(mcp_bin = nil)
-      @mcp_bin = mcp_bin || File.expand_path('../../bin/tesseract-mcp', __FILE__)
+      @mcp_bin = mcp_bin || File.expand_path('../bin/tesseract-mcp', __dir__)
     end
 
     # Auto-detects and installs MCP config into all found AI tool configuration files
-    def install_all(store = nil)
+    def install_all(_store = nil)
       results = []
       results << install_claude_code
       results << install_antigravity
@@ -39,17 +39,17 @@ module Tesseract
           target = skills_dir.join(skill[:name])
           source_dir = Pathname.new(skill[:path]).parent
 
-          if target.symlink? || target.file?
-            target.unlink
-          end
+          target.unlink if target.symlink? || target.file?
 
-          unless target.exist?
-            begin
-              File.symlink(source_dir.to_s, target.to_s)
-              results << { target: 'Google Antigravity / Gemini', skill: skill[:name], path: target.to_s, success: true }
-            rescue StandardError => e
-              results << { target: 'Google Antigravity / Gemini', skill: skill[:name], error: e.message, success: false }
-            end
+          next if target.exist?
+
+          begin
+            File.symlink(source_dir.to_s, target.to_s)
+            results << { target: 'Google Antigravity / Gemini', skill: skill[:name], path: target.to_s,
+                         success: true }
+          rescue StandardError => e
+            results << { target: 'Google Antigravity / Gemini', skill: skill[:name], error: e.message,
+                         success: false }
           end
         end
       end
@@ -64,17 +64,15 @@ module Tesseract
           target = skills_dir.join(skill[:name])
           source_dir = Pathname.new(skill[:path]).parent
 
-          if target.symlink? || target.file?
-            target.unlink
-          end
+          target.unlink if target.symlink? || target.file?
 
-          unless target.exist?
-            begin
-              File.symlink(source_dir.to_s, target.to_s)
-              results << { target: 'Claude Code', skill: skill[:name], path: target.to_s, success: true }
-            rescue StandardError => e
-              results << { target: 'Claude Code', skill: skill[:name], error: e.message, success: false }
-            end
+          next if target.exist?
+
+          begin
+            File.symlink(source_dir.to_s, target.to_s)
+            results << { target: 'Claude Code', skill: skill[:name], path: target.to_s, success: true }
+          rescue StandardError => e
+            results << { target: 'Claude Code', skill: skill[:name], error: e.message, success: false }
           end
         end
       end
@@ -96,8 +94,12 @@ module Tesseract
       path = Pathname.new(File.expand_path('~/.claude.json'))
       return { name: 'Claude Code', path: path.to_s, installed: false, detected: false } unless path.file?
 
-      data = JSON.parse(path.read(encoding: 'UTF-8')) rescue {}
-      installed = data.dig('mcpServers', 'tesseract') != nil
+      data = begin
+        JSON.parse(path.read(encoding: 'UTF-8'))
+      rescue StandardError
+        {}
+      end
+      installed = !data.dig('mcpServers', 'tesseract').nil?
       {
         name: 'Claude Code',
         path: path.to_s,
@@ -114,11 +116,22 @@ module Tesseract
       alt_path = Pathname.new(File.expand_path('~/.gemini/config/mcp_config.json'))
       target = path.file? ? path : alt_path
 
-      return { name: 'Google Antigravity / Gemini', path: path.to_s, installed: false, detected: false } unless target.file? || target.parent.directory?
+      unless target.file? || target.parent.directory?
+        return { name: 'Google Antigravity / Gemini', path: path.to_s, installed: false,
+                 detected: false }
+      end
 
       content = target.file? ? target.read(encoding: 'UTF-8').strip : ''
-      data = content.empty? ? {} : (JSON.parse(content) rescue {})
-      installed = data.dig('mcpServers', 'tesseract') != nil
+      data = if content.empty?
+               {}
+             else
+               begin
+                 JSON.parse(content)
+               rescue StandardError
+                 {}
+               end
+             end
+      installed = !data.dig('mcpServers', 'tesseract').nil?
       {
         name: 'Google Antigravity / Gemini',
         path: target.to_s,
@@ -136,8 +149,16 @@ module Tesseract
       return { name: 'Claude Desktop', path: path.to_s, installed: false, detected: false } unless dir.directory?
 
       content = path.file? ? path.read(encoding: 'UTF-8').strip : ''
-      data = content.empty? ? {} : (JSON.parse(content) rescue {})
-      installed = data.dig('mcpServers', 'tesseract') != nil
+      data = if content.empty?
+               {}
+             else
+               begin
+                 JSON.parse(content)
+               rescue StandardError
+                 {}
+               end
+             end
+      installed = !data.dig('mcpServers', 'tesseract').nil?
       {
         name: 'Claude Desktop',
         path: path.to_s,
@@ -155,8 +176,16 @@ module Tesseract
       return { name: 'Cursor', path: path.to_s, installed: false, detected: false } unless dir.directory?
 
       content = path.file? ? path.read(encoding: 'UTF-8').strip : ''
-      data = content.empty? ? {} : (JSON.parse(content) rescue {})
-      installed = data.dig('mcpServers', 'tesseract') != nil
+      data = if content.empty?
+               {}
+             else
+               begin
+                 JSON.parse(content)
+               rescue StandardError
+                 {}
+               end
+             end
+      installed = !data.dig('mcpServers', 'tesseract').nil?
       {
         name: 'Cursor',
         path: path.to_s,
@@ -197,7 +226,7 @@ module Tesseract
 
       installed_paths = []
       candidates.each do |path|
-        next unless path.parent.directory? || path.file?
+        next unless path.parent.parent.directory? || path.parent.directory? || path.file?
 
         FileUtils.mkdir_p(path.parent)
         data = if path.file?
@@ -217,11 +246,7 @@ module Tesseract
         installed_paths << path.to_s
       end
 
-      if installed_paths.any?
-        { name: 'Google Antigravity / Gemini', path: installed_paths.first, success: true }
-      else
-        nil
-      end
+      { name: 'Google Antigravity / Gemini', path: installed_paths.first, success: true } if installed_paths.any?
     rescue StandardError => e
       { name: 'Google Antigravity / Gemini', error: e.message, success: false }
     end
