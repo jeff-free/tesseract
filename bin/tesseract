@@ -25,8 +25,14 @@ find_ruby() {
     fi
 
     # 3. Homebrew
+    if [ -x "/opt/homebrew/opt/ruby/bin/ruby" ]; then
+        candidates+=("/opt/homebrew/opt/ruby/bin/ruby")
+    fi
     if [ -x "/opt/homebrew/bin/ruby" ]; then
         candidates+=("/opt/homebrew/bin/ruby")
+    fi
+    if [ -x "/usr/local/opt/ruby/bin/ruby" ]; then
+        candidates+=("/usr/local/opt/ruby/bin/ruby")
     fi
     if [ -x "/usr/local/bin/ruby" ]; then
         candidates+=("/usr/local/bin/ruby")

@@ -132,6 +132,23 @@ class TestTesseractStore < Minitest::Test
     assert_equal 'linked-project', @store.current_domain_name
   end
 
+  def test_detect_domain_from_subdirectories
+    @store.create_domain('sub-project')
+    domain_path = File.join(@tmpdir, 'sub-project')
+
+    # Create symlink in project_dir
+    symlink_path = File.join(@project_dir, 'tesseract')
+    File.symlink(domain_path, symlink_path)
+
+    # Create deep subdirectory inside project_dir
+    deep_sub = File.join(@project_dir, 'src', 'components', 'deep')
+    FileUtils.mkdir_p(deep_sub)
+
+    sub_store = Tesseract::Store.new(domains_root: @tmpdir, cwd: deep_sub)
+    assert_equal 'sub-project', sub_store.detect_domain_from_cwd
+    assert_equal 'sub-project', sub_store.current_domain_name
+  end
+
   def test_append_rule
     res = @store.append_rule('Prefer Redis Token Bucket for rate limits', domain: 'global')
     assert res[:success]
@@ -410,6 +427,94 @@ class TestTesseractCLI < Minitest::Test
     assert_includes out, 'AI Agent MCP 註冊狀態'
     assert_includes out, 'Claude Code'
   end
+
+  def test_cli_init_in_project_creates_symlink_and_rules
+    proj = File.join(@project_dir, 'init-test-app')
+    FileUtils.mkdir_p(proj)
+
+    out, = capture_io do
+      cli = Tesseract::CLI.new(['init'], proj)
+      cli.run
+    end
+
+    assert_includes out, 'Tesseract 初始化'
+    assert_includes out, '專案知識庫與 Symlink 連結'
+
+    # 1. Global Vault initialized
+    assert File.file?(File.join(@tmpdir, '_global', 'index.md'))
+
+    # 2. Project domain in iCloud initialized
+    domain_dir = File.join(@tmpdir, 'init-test-app')
+    assert Dir.exist?(domain_dir)
+    assert File.file?(File.join(domain_dir, 'index.md'))
+    assert File.file?(File.join(domain_dir, 'rule.md'))
+
+    # 3. Project symlink created
+    symlink_path = File.join(proj, 'tesseract')
+    assert File.symlink?(symlink_path)
+    assert_equal File.realpath(domain_dir), File.realpath(symlink_path)
+
+    # 4. Project AI rules synced
+    assert File.file?(File.join(proj, 'CLAUDE.md'))
+    assert_includes File.read(File.join(proj, 'CLAUDE.md')), 'tesseract/rule.md'
+  end
+
+  def test_cli_init_with_domain_arg
+    proj = File.join(@project_dir, 'custom-domain-proj')
+    FileUtils.mkdir_p(proj)
+
+    out, = capture_io do
+      cli = Tesseract::CLI.new(['init', 'my-custom-domain'], proj)
+      cli.run
+    end
+
+    assert_includes out, 'my-custom-domain'
+    domain_dir = File.join(@tmpdir, 'my-custom-domain')
+    assert Dir.exist?(domain_dir)
+    assert File.symlink?(File.join(proj, 'tesseract'))
+    assert_equal File.realpath(domain_dir), File.realpath(File.join(proj, 'tesseract'))
+  end
+
+  def test_cli_init_global_flag_does_not_link_project
+    proj = File.join(@project_dir, 'global-only-proj')
+    FileUtils.mkdir_p(proj)
+
+    out, = capture_io do
+      cli = Tesseract::CLI.new(['init', '--global'], proj)
+      cli.run
+    end
+
+    assert_includes out, '全域索引已就緒'
+    refute_includes out, '專案知識庫與 Symlink 連結'
+    refute File.exist?(File.join(proj, 'tesseract'))
+  end
+
+  def test_cli_link_migrates_existing_physical_folder
+    proj = File.join(@project_dir, 'legacy-physical-folder-proj')
+    FileUtils.mkdir_p(proj)
+
+    # Create a real directory named tesseract with existing notes
+    legacy_dir = File.join(proj, 'tesseract')
+    FileUtils.mkdir_p(legacy_dir)
+    File.write(File.join(legacy_dir, 'old-notes.md'), "# Old Notes\nImportant content")
+
+    out, = capture_io do
+      cli = Tesseract::CLI.new(['link'], proj)
+      cli.run
+    end
+
+    assert_includes out, '偵測到現有實體資料夾'
+    assert_includes out, '遷移：old-notes.md → iCloud'
+
+    # Verify symlink is established
+    assert File.symlink?(legacy_dir)
+
+    # Verify note was migrated to iCloud
+    domain_dir = File.join(@tmpdir, 'legacy-physical-folder-proj')
+    migrated_note = File.join(domain_dir, 'old-notes.md')
+    assert File.file?(migrated_note)
+    assert_includes File.read(migrated_note), 'Important content'
+  end
 end
 
 class TestMCPProtocolIntegration < Minitest::Test
@@ -587,5 +692,57 @@ class TestMCPProtocolIntegration < Minitest::Test
     status_res = responses.find { |r| r['id'] == 2 }
     refute_nil status_res, "server stopped serving after a bad line: #{stdout}"
     assert_includes status_res['result']['content'].first['text'], 'Tesseract Knowledge Base Status'
+  end
+
+  def test_initialize_with_workspace_root_sets_cwd
+    bin_path = File.expand_path('../bin/tesseract-mcp', __dir__)
+    project_dir = Dir.mktmpdir('tesseract_workspace_test_')
+
+    begin
+      # Set up project with symlink to project domain
+      domain_dir = File.join(@tmpdir, 'workspace-proj')
+      FileUtils.mkdir_p(domain_dir)
+      File.symlink(domain_dir, File.join(project_dir, 'tesseract'))
+
+      requests = [
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            clientInfo: { name: 'test-agent', version: '1.0' },
+            rootUri: "file://#{project_dir}"
+          }
+        },
+        {
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'tools/call',
+          params: {
+            name: 'tesseract_get_domain_status',
+            arguments: {}
+          }
+        }
+      ]
+
+      input_data = requests.map { |r| JSON.generate(r) }.join("\n") + "\n"
+
+      stdout, stderr, status = Open3.capture3(
+        { 'TESSERACT_DOMAINS' => @tmpdir },
+        bin_path,
+        stdin_data: input_data
+      )
+
+      assert status.success?, "Server process failed: #{stderr}"
+      responses = stdout.lines.map(&:strip).reject(&:empty?).map { |l| JSON.parse(l) }
+
+      status_res = responses.find { |r| r['id'] == 2 }
+      refute_nil status_res
+      text = status_res['result']['content'].first['text']
+      assert_includes text, 'Detected Active Domain**: `workspace-proj`'
+      assert_includes text, project_dir
+    ensure
+      FileUtils.remove_entry(project_dir) if File.exist?(project_dir)
+    end
   end
 end

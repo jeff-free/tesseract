@@ -18,6 +18,8 @@ module Tesseract
     SERVER_VERSION = '1.0.0'
     PROTOCOL_VERSION = '2024-11-05'
 
+    attr_reader :store
+
     def initialize(domains_root: nil, cwd: Dir.pwd)
       @store = Store.new(domains_root: domains_root, cwd: cwd)
       self.class.force_utf8_stdio!
@@ -130,6 +132,16 @@ module Tesseract
       client_info = params['clientInfo'] || {}
       @logger.info("Connected to client: #{client_info['name']} v#{client_info['version']}")
 
+      # Extract workspace root from initialize params if provided
+      root_uri = params['rootUri'] || params['rootPath'] || params.dig('workspaceFolders', 0, 'uri')
+      if root_uri
+        workspace_path = uri_to_path(root_uri)
+        if workspace_path && File.directory?(workspace_path)
+          @logger.info("Setting workspace CWD from client initialize: #{workspace_path}")
+          @store = Store.new(domains_root: @store.domains_root, cwd: workspace_path)
+        end
+      end
+
       send_response(id, {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: {
@@ -142,6 +154,20 @@ module Tesseract
           version: SERVER_VERSION
         }
       })
+    end
+
+    def uri_to_path(uri_str)
+      return nil if uri_str.nil? || uri_str.to_s.strip.empty?
+
+      str = uri_str.to_s
+      if str.start_with?('file://')
+        require 'cgi'
+        require 'uri'
+        path = URI.parse(str).path rescue nil
+        path ? CGI.unescape(path) : str.sub(%r{\Afile://}, '')
+      else
+        str
+      end
     end
 
     def handle_tool_call(id, params)

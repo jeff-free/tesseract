@@ -83,9 +83,18 @@ module Tesseract
 
     def read_skill(skill_name)
       target = global_skills_dir.join(skill_name.to_s, 'SKILL.md')
-      return nil unless target.file?
+      return target.read(encoding: 'UTF-8') if target.file?
 
-      target.read(encoding: 'UTF-8')
+      # If skill_name is "hyperfold", also try "tesseract-hyperfold" and vice versa
+      alt_name = skill_name.to_s.start_with?('tesseract-') ? skill_name.to_s.sub(/^tesseract-/, '') : "tesseract-#{skill_name}"
+      alt_target = global_skills_dir.join(alt_name, 'SKILL.md')
+      return alt_target.read(encoding: 'UTF-8') if alt_target.file?
+
+      # Also search list_skills for matching id or name
+      match = list_skills.find { |s| s[:name] == skill_name.to_s || s[:id] == skill_name.to_s || s[:name] == alt_name || s[:id] == alt_name }
+      return File.read(match[:path], encoding: 'UTF-8') if match && File.file?(match[:path])
+
+      nil
     end
 
     # Resolves domain name: "global" / "_global" -> _global folder, "auto" -> based on cwd, other -> subfolder
@@ -102,20 +111,31 @@ module Tesseract
     end
 
     def detect_domain_from_cwd
-      # Check if current directory has a tesseract symlink
-      symlink_path = @cwd.join('tesseract')
-      if symlink_path.symlink?
-        target = symlink_path.readlink.expand_path(@cwd)
-        if target.to_s.start_with?(@domains_root.to_s)
-          rel = target.relative_path_from(@domains_root).to_s
-          return rel unless rel == '.' || rel.empty?
+      # 1. Walk up from @cwd to find a `tesseract` symlink in cwd or any ancestor directory
+      curr = @cwd
+      while curr && curr.to_s != curr.parent.to_s
+        symlink_path = curr.join('tesseract')
+        if symlink_path.symlink?
+          target = symlink_path.readlink.expand_path(curr)
+          if target.to_s == @domains_root.to_s || target.to_s.start_with?("#{@domains_root}/")
+            rel = target.relative_path_from(@domains_root).to_s
+            return rel unless rel == '.' || rel.empty?
+          else
+            # Symlink points to a directory named after domain
+            return target.basename.to_s
+          end
         end
-      end
 
-      # Check if cwd basename matches a domain folder in domains_root
-      project_name = @cwd.basename.to_s
-      domain_candidate = @domains_root.join(project_name)
-      return project_name if domain_candidate.directory? && project_name != GLOBAL_DIR_NAME
+        # Check if directory name matches an existing domain in domains_root
+        cand_name = curr.basename.to_s
+        if cand_name != GLOBAL_DIR_NAME && @domains_root.join(cand_name).directory?
+          return cand_name if curr.join('.git').exist? || curr == @cwd
+        end
+
+        break if curr == Pathname.new(Dir.home)
+
+        curr = curr.parent
+      end
 
       nil
     end
@@ -129,11 +149,15 @@ module Tesseract
       domains = [GLOBAL_DIR_NAME]
       return domains unless @domains_root.exist?
 
-      @domains_root.children.select(&:directory?).each do |dir|
-        name = dir.basename.to_s
-        next if name.start_with?('.') || name == 'assets' || name == GLOBAL_DIR_NAME
+      begin
+        @domains_root.children.select(&:directory?).each do |dir|
+          name = dir.basename.to_s
+          next if name.start_with?('.') || name == 'assets' || name == GLOBAL_DIR_NAME
 
-        domains << name
+          domains << name
+        end
+      rescue Errno::EPERM, Errno::EACCES => e
+        warn "⚠️  Domains directory not accessible (#{e.message})"
       end
       domains.sort
     end
@@ -228,7 +252,11 @@ module Tesseract
       target_dirs = if domain
                       [resolve_domain_dir(domain)]
                     else
-                      @domains_root.children.select(&:directory?)
+                      begin
+                        @domains_root.children.select(&:directory?)
+                      rescue Errno::EPERM, Errno::EACCES
+                        []
+                      end
                     end
 
       results = []
@@ -238,11 +266,21 @@ module Tesseract
 
         dom_name = dir == global_dir ? '_global' : dir.basename.to_s
 
-        dir.children.select { |f| f.file? && f.extname == '.md' }.each do |file|
+        begin
+          files = dir.children.select { |f| f.file? && f.extname == '.md' }
+        rescue Errno::EPERM, Errno::EACCES
+          next
+        end
+
+        files.each do |file|
           topic_name = file.basename('.md').to_s
           next if topic_name == 'index'
 
-          content = file.read(encoding: 'UTF-8')
+          content = begin
+            file.read(encoding: 'UTF-8')
+          rescue Errno::EPERM, Errno::EACCES
+            next
+          end
 
           # Match topic name, title, tags, or content body
           title, tags = extract_title_and_tags(file)
@@ -290,7 +328,13 @@ module Tesseract
 
     def reindex_all
       reindexed = []
-      @domains_root.children.select(&:directory?).each do |dir|
+      dirs = begin
+        @domains_root.children.select(&:directory?)
+      rescue Errno::EPERM, Errno::EACCES
+        []
+      end
+
+      dirs.each do |dir|
         next unless dir.exist? && dir.join('index.md').exist?
 
         update_index_files_section(dir)

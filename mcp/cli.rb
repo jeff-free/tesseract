@@ -163,6 +163,11 @@ module Tesseract
     def link_project_dir(project_path, domain_dir, domain_name)
       link_path = project_path.join('tesseract')
 
+      # 確保 iCloud domain 目錄已存在，避免懸空 symlink
+      unless domain_dir.directory?
+        @store.create_domain(domain_name, description: "#{domain_name} 專案知識庫")
+      end
+
       if link_path.symlink?
         existing = link_path.readlink.expand_path(project_path)
         if existing == domain_dir
@@ -179,9 +184,29 @@ module Tesseract
             return
           end
         end
+      elsif link_path.directory?
+        puts "ℹ 偵測到現有實體資料夾：#{link_path}"
+        answer = ask("是否將現有資料夾內的筆記遷移至 iCloud 知識庫並建立 symlink？[Y/n] ", default: 'Y')
+        if answer.match?(/^[Yy]$/)
+          link_path.children.each do |child|
+            dest = domain_dir.join(child.basename)
+            unless dest.exist?
+              FileUtils.cp_r(child, dest)
+              puts "  ✓ 遷移：#{child.basename} → iCloud"
+            end
+          end
+          backup_path = project_path.join("tesseract.backup.#{Time.now.strftime('%Y%m%d%H%M%S')}")
+          FileUtils.mv(link_path, backup_path)
+          puts "  ✓ 原資料夾已備份至：#{backup_path}"
+          File.symlink(domain_dir.to_s, link_path.to_s)
+          puts "✓ Symlink 已建立：#{link_path} → #{domain_dir}"
+        else
+          warn "錯誤：#{link_path} 是實體資料夾，未建立 symlink。"
+          return
+        end
       elsif link_path.exist?
-        warn "錯誤：#{link_path} 已存在且是實體檔案/資料夾，不是 symlink！"
-        warn "請先更名或移開 #{link_path} 後再執行 link。"
+        warn "錯誤：#{link_path} 已存在且是檔案，不是 symlink！"
+        warn "請先更名或移開 #{link_path} 後再執行。"
         exit 1
       else
         File.symlink(domain_dir.to_s, link_path.to_s)
@@ -190,6 +215,10 @@ module Tesseract
 
       # 確保 domain 內有 rule.md
       @store.ensure_rule_file(domain_dir, domain_name) if @store.respond_to?(:ensure_rule_file)
+
+      # 自動同步專案 AI 設定檔 (CLAUDE.md, .cursorrules 等) 指針
+      require_relative 'tools' unless defined?(Tesseract::Tools)
+      Tools.sync_project_rules(@store, targets: ['all'], project_path: project_path)
 
       # 輸出 Git 忽略建議，不強制修改使用者的 .gitignore
       puts ''
@@ -222,6 +251,24 @@ module Tesseract
       puts '=== Tesseract 狀態 ==='
       puts ''
       puts "iCloud 知識庫 Vault：#{@store.domains_root}"
+      puts ''
+
+      puts '── 當前專案狀態 ──────────────────────────'
+      detected = @store.detect_domain_from_cwd
+      project_symlink = @cwd.join('tesseract')
+      if project_symlink.symlink?
+        target = project_symlink.readlink.expand_path(@cwd)
+        if target.directory?
+          puts "  ✓ 專案已連結：#{@cwd}"
+          puts "    → Domain: #{detected || target.basename} (#{target})"
+        else
+          puts "  ✗ 專案 Symlink 指向不存在目標：#{target}"
+        end
+      elsif detected
+        puts "  ○ 偵測到匹配 Domain：#{detected}（但當前目錄尚未建立 tesseract/ symlink，可執行 tesseract init 或 tesseract link）"
+      else
+        puts "  — 當前目錄 (#{@cwd.basename}) 尚未連結至專案知識庫"
+      end
       puts ''
 
       root_index = @store.global_dir.join('index.md')
@@ -299,26 +346,37 @@ module Tesseract
       puts '=== Tesseract 初始化 ==='
       puts ''
 
-      default_path = Store::DEFAULT_ICLOUD_PATH
-      puts "知識庫路徑（iCloud Vault，預設：#{default_path}）"
+      # 1. 判定參數 (全域模式、自訂 Vault、或專案 Domain 名稱)
+      global_only = args.include?('--global') || args.include?('--vault-only')
 
-      input_path = args.first ||
-                   ask('請輸入路徑，或直接按 Enter 使用預設值: ', default: default_path)
+      custom_vault_index = args.index('--vault')
+      custom_vault = custom_vault_index ? args[custom_vault_index + 1] : nil
 
-      target_dir = Pathname.new(File.expand_path(input_path))
+      # 排除選項後的剩餘參數
+      pos_args = args.reject { |a| a.start_with?('--') || a == custom_vault }
+
+      # 若第一位置參數看起來像自訂路徑且包含斜線或已是資料夾（且不是純專案名稱）
+      if pos_args.first && (pos_args.first.start_with?('/', '~', './', '../') || (File.directory?(File.expand_path(pos_args.first)) && pos_args.first != '.' && pos_args.first != @cwd.basename.to_s))
+        custom_vault ||= pos_args.shift
+      end
+
+      specified_domain = pos_args.first
+
+      default_vault = Store::DEFAULT_ICLOUD_PATH
+      vault_path = custom_vault || ENV['TESSERACT_DOMAINS'] || default_vault
+      target_dir = Pathname.new(File.expand_path(vault_path))
       FileUtils.mkdir_p(target_dir)
 
-      # Ensure global index
-      store = Store.new(domains_root: target_dir)
+      # Ensure global index & skills in iCloud Vault
+      store = Store.new(domains_root: target_dir, cwd: @cwd)
       store.ensure_root_exists!
 
-      puts ''
       puts "✓ 知識庫路徑已就緒：#{target_dir}"
-      puts "✓ 全域索引已建立：#{store.global_dir.join('index.md')}"
+      puts "✓ 全域索引已就緒：#{store.global_dir.join('index.md')}"
       puts ''
 
       # 自動配置各 AI Agent 的 MCP
-      puts '── 自動配置 AI Agent MCP 服務 ───────────'
+      puts '── 1. 自動配置 AI Agent MCP 服務 ───────────'
       installer = MCPInstaller.new
       results = installer.install_all
 
@@ -335,7 +393,7 @@ module Tesseract
       end
 
       puts ''
-      puts '── 自動派發雲端 AI Skills ──────────────────'
+      puts '── 2. 自動派發雲端 AI Skills ──────────────────'
       skill_results = installer.install_skills(store)
       if skill_results.empty?
         puts '  （雲端 skills 已就緒）'
@@ -349,12 +407,44 @@ module Tesseract
         end
       end
 
+      # 3. 專案初始化與 Symlink 連結 (核心修復：確保專案擁有 tesseract/ symlink 並指向 iCloud)
+      is_project_dir = !global_only &&
+                       @cwd != Pathname.new(Dir.home) &&
+                       @cwd != target_dir &&
+                       @cwd != target_dir.parent &&
+                       @cwd.to_s != '/'
+
+      domain_name = nil
+      if is_project_dir
+        puts ''
+        puts '── 3. 專案知識庫與 Symlink 連結 ──────────────'
+        default_domain = @cwd.basename.to_s
+        domain_name = specified_domain || (
+          $stdin.tty? ? ask("專案知識庫 Domain 名稱 [#{default_domain}]: ", default: default_domain) : default_domain
+        )
+
+        domain_dir = store.domains_root.join(domain_name)
+        unless domain_dir.directory?
+          store.create_domain(domain_name, description: "#{domain_name} 專案知識庫")
+          puts "✓ 已建立專屬 iCloud domain：#{domain_dir}"
+        end
+
+        link_project_dir(@cwd, domain_dir, domain_name)
+      end
+
       puts ''
       puts '=== 初始化完成 ==='
       puts ''
-      puts '接下來您可以：'
-      puts '  1. 建立新專案：tesseract new <專案名稱>'
-      puts '  2. 連結既有專案：cd <專案目錄> && tesseract link'
+      if is_project_dir
+        puts "  • 專案路徑：#{@cwd}"
+        puts "  • 知識庫 Domain：#{domain_name} (#{store.domains_root.join(domain_name)})"
+        puts "  • IDE 檔案樹：#{@cwd.join('tesseract')} (可直接瀏覽與手寫筆記)"
+        puts "  • AI Agent：已自動配置 MCP 與 rule.md 規範，可直接讀寫知識庫"
+      else
+        puts '接下來您可以：'
+        puts '  1. 建立新專案：tesseract new <專案名稱>'
+        puts '  2. 連結既有專案：cd <專案目錄> && tesseract init 或 tesseract link'
+      end
       puts ''
     end
 
@@ -513,12 +603,12 @@ module Tesseract
         用法: tesseract <指令> [參數]
 
         常用指令:
-          init [路徑]                  初始化 Tesseract 知識庫並自動配置 AI Agent MCP
-          config                       查看與管理 Tesseract 設定 (MCP 狀態與管理)
-          new <名稱> [路徑]            建立專案資料夾 + iCloud 知識庫 + 連結（一步完成）
+          init [domain] [--global]     初始化知識庫並連結當前專案 (自動建立 symlink、rule.md 與同步 AI 規範)
           link [路徑] [domain]         將既有專案連結到知識 domain (建立 symlink，預設同資料夾名)
+          new <名稱> [路徑]            建立專案資料夾 + iCloud 知識庫 + 連結（一步完成）
           sync-rules [targets]         同步專案各 AI 設定檔（CLAUDE.md、.cursorrules 等）指向 tesseract/rule.md
-          status                       列出所有 domain 與已連結專案狀態
+          config                       查看與管理 Tesseract 設定 (MCP 狀態與管理)
+          status                       列出當前專案、所有 domain 與已連結專案狀態
           mcp                          啟動 Tesseract MCP Server (Stdio JSON-RPC)
           new-domain <名稱> [說明]     建立新 iCloud 知識 domain
           reindex                      重建各 domain 的 index.md Files 清單

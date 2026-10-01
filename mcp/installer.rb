@@ -35,13 +35,16 @@ module Tesseract
         skills_dir = gemini_root.join('skills')
         FileUtils.mkdir_p(skills_dir)
 
+        # Clean up legacy broken symlinks
+        legacy_hyperfold = skills_dir.join('hyperfold')
+        legacy_hyperfold.unlink if legacy_hyperfold.symlink?
+
         store.list_skills.each do |skill|
           target = skills_dir.join(skill[:name])
           source_dir = Pathname.new(skill[:path]).parent
 
           target.unlink if target.symlink? || target.file?
-
-          next if target.exist?
+          FileUtils.rm_rf(target) if target.directory? && !target.symlink?
 
           begin
             File.symlink(source_dir.to_s, target.to_s)
@@ -60,13 +63,16 @@ module Tesseract
         skills_dir = claude_root.join('skills')
         FileUtils.mkdir_p(skills_dir)
 
+        # Clean up legacy broken symlinks
+        legacy_hyperfold = skills_dir.join('hyperfold')
+        legacy_hyperfold.unlink if legacy_hyperfold.symlink?
+
         store.list_skills.each do |skill|
           target = skills_dir.join(skill[:name])
           source_dir = Pathname.new(skill[:path]).parent
 
           target.unlink if target.symlink? || target.file?
-
-          next if target.exist?
+          FileUtils.rm_rf(target) if target.directory? && !target.symlink?
 
           begin
             File.symlink(source_dir.to_s, target.to_s)
