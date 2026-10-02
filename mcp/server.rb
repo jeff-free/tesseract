@@ -6,6 +6,11 @@ if RUBY_VERSION < '3.0.0'
   exit 1
 end
 
+# MCP clients may spawn the server without LANG/LC_ALL, so Ruby defaults to US-ASCII and
+# returns non-ASCII filenames (e.g. Chinese topic names) as ASCII-8BIT. Mixing those with
+# UTF-8 file content raises Encoding::CompatibilityError in cross-domain search.
+Encoding.default_external = Encoding::UTF_8
+
 require_relative 'store'
 require_relative 'prompts'
 require_relative 'tools'
