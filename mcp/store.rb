@@ -235,13 +235,22 @@ module Tesseract
       log_desc = summary || (is_new ? "Created #{clean_topic}" : "Updated #{clean_topic}")
       append_changelog(domain_dir, "- #{today}: #{log_desc} (AI)")
 
+      action_desc = is_new ? 'Created' : 'Updated'
+      msg_details = [
+        "Successfully saved '#{clean_topic}' to #{domain_name} domain (#{action_desc}).",
+        ("- Summary: #{log_desc}" if summary),
+        ("- Tags: #{formatted_tags.join(' ')}" if formatted_tags.any?),
+        "- Path: #{file_path}",
+        "- Updated index.md and changelog."
+      ].compact.join("\n")
+
       {
         success: true,
         domain: domain_name,
         topic: clean_topic,
         is_new: is_new,
         path: file_path.to_s,
-        message: "Successfully saved '#{clean_topic}' to #{domain_name} domain and updated index.md"
+        message: msg_details
       }
     end
 

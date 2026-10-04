@@ -17,7 +17,8 @@ module Tesseract
 
       2. **Proactive Knowledge Retention (Do not wait for user prompt)**:
          - Capture key architectural decisions, resolved root causes, workarounds, or user preferences.
-         - Use `tesseract_save_knowledge` to record insights.
+         - Use `tesseract_save_knowledge` to record insights autonomously.
+         - **Transparency & Clarity**: Before calling `tesseract_save_knowledge`, briefly inform the user in chat what you are saving and why, and always provide a concise, descriptive `summary` parameter so the user can clearly inspect and approve it in the IDE confirmation dialog.
          - If the user specifies or updates project-specific note-taking rules or preferences, record them in `tesseract/rule.md` (and use `tesseract_sync_project_rules` to keep project AI configs updated).
 
       3. **Structure & Formatting**:

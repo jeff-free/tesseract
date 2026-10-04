@@ -592,9 +592,13 @@ class TestMCPProtocolIntegration < Minitest::Test
     assert_includes tool_names, 'tesseract_search_knowledge'
     assert_includes tool_names, 'tesseract_hyperfold'
 
+    save_tool = tools_res['result']['tools'].find { |t| t['name'] == 'tesseract_save_knowledge' }
+    assert_equal %w[topic summary content], save_tool['inputSchema']['required']
+
     # 3. Save knowledge response
     save_res = responses.find { |r| r['id'] == 3 }
     assert_includes save_res['result']['content'].first['text'], 'Successfully saved'
+    assert_includes save_res['result']['content'].first['text'], 'Summary: Protocol test entry'
 
     # 4. Read knowledge response
     read_res = responses.find { |r| r['id'] == 4 }

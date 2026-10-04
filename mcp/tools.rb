@@ -25,7 +25,11 @@ module Tesseract
       },
       {
         name: 'tesseract_save_knowledge',
-        description: 'Save or update a knowledge topic in Tesseract. Automatically updates index.md and changelog.',
+        description: 'Proactively save or update a durable knowledge topic in Tesseract. ' \
+                     'CRITICAL: (1) Autonomously invoke this tool whenever resolving non-trivial bugs, establishing architectural patterns/decisions, or discovering gotchas. ' \
+                     '(2) Before calling this tool, briefly output 1 sentence in chat explaining what is being saved and why. ' \
+                     '(3) Always provide a clear, informative summary explaining the change for user approval prompts and changelogs. ' \
+                     'Automatically updates index.md and changelog.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -33,13 +37,13 @@ module Tesseract
               type: 'string',
               description: 'Topic name (without .md extension, e.g. "api-design", "state-management").'
             },
+            summary: {
+              type: 'string',
+              description: 'Clear 1-sentence summary of what is being recorded and why. Crucial: Displayed directly in user confirmation/approval dialogs and recorded in index.md Changelog.'
+            },
             content: {
               type: 'string',
               description: 'The Markdown content to save for this topic.'
-            },
-            summary: {
-              type: 'string',
-              description: 'Short 1-sentence summary of the decision or insight for index.md Changelog.'
             },
             tags: {
               type: 'array',
@@ -51,7 +55,7 @@ module Tesseract
               description: 'Target domain ("auto" for current project, "global" for root vault, or specific domain name). Defaults to "auto".'
             }
           },
-          required: %w[topic content]
+          required: %w[topic summary content]
         }
       },
       {
@@ -201,6 +205,9 @@ module Tesseract
 
         raise ArgumentError, 'Topic and content are required' unless topic && content
 
+        # Ensure summary fallback if client omitted it
+        summary ||= (content.lines.find { |l| l.strip.start_with?('#') }&.sub(/^#+\s*/, '')&.strip || "Updated #{topic}")
+
         result = store.save_topic(
           topic: topic,
           content: content,
@@ -340,9 +347,16 @@ module Tesseract
       marker_end = '<!-- tesseract-rule-end -->'
       snippet = <<~MARKDOWN.strip
         #{marker_start}
-        ## Tesseract 專案知識庫與自訂規範
-        請遵守本專案 `#{rule_rel_path}` 中定義的知識庫筆記方式與開發規範。
-        在處理任務前，可先閱讀 `#{rule_rel_path}` 或呼叫 `tesseract_read_knowledge(topic: "rule")`。
+        ## Tesseract 專案知識庫與即時沉澱規範
+        本專案與個人的 Tesseract 知識庫連動，請遵循以下規範：
+        1. **任務開始前**：若涉及架構決策或專案規範，先閱讀 `#{rule_rel_path}` 或呼叫 `tesseract_read_knowledge(topic: "rule")`。
+        2. **結案前主動知識沉澱 (Proactive Knowledge Retention)**：
+           每次完成實質任務或除錯後，在回覆使用者前**必須自我檢查**：
+           - 是否解決了未記錄的重大 Bug、相依性衝突或踩坑解法？ ➔ 立即呼叫 `tesseract_save_knowledge(topic: "troubleshooting", ...)`
+           - 是否確立了重要架構決策或技術約定？ ➔ 立即呼叫 `tesseract_save_knowledge(topic: "adr-<name>", ...)`
+           - 記錄應側重於「為什麼這樣做 (Why)」，而非只是陳列程式碼。
+        3. **透明審查與確認提示 (Transparency in Tool Calls)**：
+           呼叫 `tesseract_save_knowledge` 前，**必須先在對話中簡述欲儲存的內容與緣由**，並在參數中提供清晰具體的 `summary`，讓使用者在 IDE 授權審批視窗（Approval Dialog）中能一目了然改動內容與意圖。
         #{marker_end}
       MARKDOWN
 
