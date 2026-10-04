@@ -5,6 +5,7 @@ require_relative 'server'
 require_relative 'installer'
 require 'pathname'
 require 'fileutils'
+require 'optparse'
 
 module Tesseract
   class CLI
@@ -19,6 +20,12 @@ module Tesseract
       args = @argv[1..] || []
 
       case command
+      when 'save'
+        cmd_save(args)
+      when 'read'
+        cmd_read(args)
+      when 'search'
+        cmd_search(args)
       when 'new'
         cmd_new(args)
       when 'link'
@@ -598,11 +605,147 @@ module Tesseract
       puts res[:message]
     end
 
+    def cmd_save(args)
+      options = {
+        summary: nil,
+        content: nil,
+        file: nil,
+        tags: [],
+        domain: 'auto'
+      }
+
+      parser = OptionParser.new do |opts|
+        opts.banner = '用法: tesseract save <topic> [選項]'
+        opts.on('-s', '--summary SUMMARY', '本次更動的一句話摘要（記錄於 Changelog 與審查視窗）') { |v| options[:summary] = v }
+        opts.on('-c', '--content CONTENT', 'Markdown 筆記內容') { |v| options[:content] = v }
+        opts.on('-f', '--file PATH', '從指定檔案讀取 Markdown 內容') { |v| options[:file] = v }
+        opts.on('-t', '--tags TAGS', '標籤列表，以逗號分隔 (如 "#auth,#security")') { |v| options[:tags] = v.split(',').map(&:strip) }
+        opts.on('-d', '--domain DOMAIN', '目標 domain ("auto", "global", 或指定名稱)') { |v| options[:domain] = v }
+        opts.on('-h', '--help', '顯示此說明') do
+          puts opts
+          exit 0
+        end
+      end
+
+      remaining = parser.parse(args.dup)
+      topic = remaining.first
+
+      if topic.nil? || topic.strip.empty?
+        warn '錯誤: 請指定筆記主題名稱 (topic)'
+        warn parser.help
+        exit 1
+      end
+
+      # Content source: 1. -c, 2. -f, 3. stdin pipe
+      content = options[:content]
+      if content.nil? && options[:file]
+        file_path = Pathname.new(File.expand_path(options[:file], @cwd))
+        if file_path.file?
+          content = file_path.read(encoding: 'UTF-8')
+        else
+          warn "錯誤: 檔案不存在: #{options[:file]}"
+          exit 1
+        end
+      end
+
+      if content.nil? && !$stdin.tty?
+        content = $stdin.read
+      end
+
+      if content.nil? || content.strip.empty?
+        warn '錯誤: 請提供筆記內容 (透過 -c, -f 或管線輸入)'
+        warn parser.help
+        exit 1
+      end
+
+      summary = options[:summary] || (content.lines.find { |l| l.strip.start_with?('#') }&.sub(/^#+\s*/, '')&.strip || "Updated #{topic}")
+
+      res = @store.save_topic(
+        topic: topic,
+        content: content,
+        domain: options[:domain],
+        summary: summary,
+        tags: options[:tags]
+      )
+
+      puts res[:message]
+    end
+
+    def cmd_read(args)
+      options = {
+        domain: 'auto'
+      }
+
+      parser = OptionParser.new do |opts|
+        opts.banner = '用法: tesseract read [topic] [選項]'
+        opts.on('-d', '--domain DOMAIN', '目標 domain ("auto", "global", 或指定名稱)') { |v| options[:domain] = v }
+        opts.on('-h', '--help', '顯示此說明') do
+          puts opts
+          exit 0
+        end
+      end
+
+      remaining = parser.parse(args.dup)
+      topic = remaining.first || 'index'
+
+      res = @store.read_topic(domain: options[:domain], topic: topic)
+      if res[:found]
+        puts res[:content]
+      else
+        warn "錯誤: 找不到主題 '#{topic}' (#{res[:error]})"
+        exit 1
+      end
+    end
+
+    def cmd_search(args)
+      options = {
+        domain: nil
+      }
+
+      parser = OptionParser.new do |opts|
+        opts.banner = '用法: tesseract search <關鍵字或#標籤> [選項]'
+        opts.on('-d', '--domain DOMAIN', '限制搜尋特定 domain') { |v| options[:domain] = v }
+        opts.on('-h', '--help', '顯示此說明') do
+          puts opts
+          exit 0
+        end
+      end
+
+      remaining = parser.parse(args.dup)
+      query = remaining.join(' ').strip
+
+      if query.empty?
+        warn '錯誤: 請輸入搜尋關鍵字或標籤'
+        warn parser.help
+        exit 1
+      end
+
+      results = @store.search(query, domain: options[:domain])
+      if results.empty?
+        puts "找不到符合 '#{query}' 的知識筆記。"
+      else
+        puts "=== 找到 #{results.size} 筆相符知識 (查詢: '#{query}') ==="
+        puts ''
+        results.each do |r|
+          tag_str = r[:tags].any? ? " (#{r[:tags].join(' ')})" : ''
+          puts "- [#{r[:domain]}] [[#{r[:topic]}]]#{tag_str}: #{r[:title]}"
+          puts "  > #{r[:snippet]}"
+          puts ''
+        end
+      end
+    end
+
     def cmd_help
       puts <<~HELP
         用法: tesseract <指令> [參數]
 
-        常用指令:
+        知識庫即時讀寫指令:
+          save <topic> [選項]          儲存或更新知識筆記 (自動更新 index 與 Changelog)
+                                       選項: -s "摘要" -c "內容" -f 檔案 -t "標籤1,標籤2" -d domain
+          read [topic]                 讀取特定筆記或 index.md (輸出 Markdown)
+          search <關鍵字|#tag>         搜尋知識庫筆記與標籤
+
+        專案與環境管理指令:
           init [domain] [--global]     初始化知識庫並連結當前專案 (自動建立 symlink、rule.md 與同步 AI 規範)
           link [路徑] [domain]         將既有專案連結到知識 domain (建立 symlink，預設同資料夾名)
           new <名稱> [路徑]            建立專案資料夾 + iCloud 知識庫 + 連結（一步完成）

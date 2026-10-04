@@ -266,6 +266,27 @@ tesseract link
 
 ---
 
+### 知識庫即時讀寫 CLI（純 Ruby 3.0+，支援行動端/終端操作）
+
+除了透過 MCP 工具，Tesseract 內建純 Ruby 撰寫的 CLI 讀寫指令。無論是人類直接在終端機操作、腳本管線（Pipes），或是**在手機端使用 Gemini Spark 遠端操作電腦時（無法呼叫 local MCP）**，皆可直接調用：
+
+```bash
+# 1. 儲存/更新主題筆記（自動更新 index.md 與 Changelog）
+tesseract save <topic> -s "更動摘要" -c "Markdown 筆記內容"
+tesseract save <topic> -s "更動摘要" -f path/to/draft.md
+echo "筆記內容..." | tesseract save <topic> -s "更動摘要"
+
+# 2. 讀取主題筆記或 index（輸出 Markdown 至 stdout）
+tesseract read [topic]         # 未指定 topic 時預設讀取 index.md
+tesseract read rule            # 讀取當前專案規範 rule.md
+
+# 3. 跨領域知識全文與標籤搜尋
+tesseract search <關鍵字或#tag>
+tesseract search "#architecture"
+```
+
+---
+
 ### 查看與管理設定（MCP 與 Skills 狀態）
 
 ```bash

@@ -515,6 +515,79 @@ class TestTesseractCLI < Minitest::Test
     assert File.file?(migrated_note)
     assert_includes File.read(migrated_note), 'Important content'
   end
+
+  def test_cli_save_and_read_commands
+    repo = File.join(@project_dir, 'cli-crud-proj')
+    FileUtils.mkdir_p(repo)
+    store = Tesseract::Store.new(domains_root: @tmpdir, cwd: repo)
+    store.create_domain('cli-crud-proj')
+    File.symlink(File.join(@tmpdir, 'cli-crud-proj'), File.join(repo, 'tesseract'))
+
+    # 1. Test save
+    out_save, = capture_io do
+      cli = Tesseract::CLI.new(
+        ['save', 'api-pattern', '-s', 'Decided REST API structure', '-c', "# API Pattern\n\nUses JSON Schema validation.", '-t', '#api,#rest'],
+        repo
+      )
+      cli.run
+    end
+
+    assert_includes out_save, "Successfully saved 'api-pattern'"
+    assert_includes out_save, 'Summary: Decided REST API structure'
+
+    # Verify file written to domain
+    topic_file = File.join(@tmpdir, 'cli-crud-proj', 'api-pattern.md')
+    assert File.file?(topic_file)
+    content = File.read(topic_file)
+    assert_includes content, 'Uses JSON Schema validation.'
+    assert_includes content, '#api #rest'
+
+    # 2. Test read
+    out_read, = capture_io do
+      cli = Tesseract::CLI.new(['read', 'api-pattern'], repo)
+      cli.run
+    end
+    assert_includes out_read, 'Uses JSON Schema validation.'
+
+    # 3. Test read default index
+    out_index, = capture_io do
+      cli = Tesseract::CLI.new(['read'], repo)
+      cli.run
+    end
+    assert_includes out_index, 'api-pattern'
+
+    # 4. Test search
+    out_search, = capture_io do
+      cli = Tesseract::CLI.new(['search', '#api'], repo)
+      cli.run
+    end
+    assert_includes out_search, 'api-pattern'
+    assert_includes out_search, '找到 1 筆相符知識'
+  end
+
+  def test_cli_save_from_file
+    repo = File.join(@project_dir, 'cli-file-proj')
+    FileUtils.mkdir_p(repo)
+    store = Tesseract::Store.new(domains_root: @tmpdir, cwd: repo)
+    store.create_domain('cli-file-proj')
+    File.symlink(File.join(@tmpdir, 'cli-file-proj'), File.join(repo, 'tesseract'))
+
+    draft_file = File.join(repo, 'draft.md')
+    File.write(draft_file, "# Draft Note\n\nDraft content from file.")
+
+    out, = capture_io do
+      cli = Tesseract::CLI.new(
+        ['save', 'draft-topic', '-s', 'Saved from file', '-f', draft_file],
+        repo
+      )
+      cli.run
+    end
+
+    assert_includes out, "Successfully saved 'draft-topic'"
+    read_res = store.read_topic(domain: 'cli-file-proj', topic: 'draft-topic')
+    assert read_res[:found]
+    assert_includes read_res[:content], 'Draft content from file.'
+  end
 end
 
 class TestMCPProtocolIntegration < Minitest::Test
