@@ -252,9 +252,41 @@ module Tesseract
         installed_paths << path.to_s
       end
 
+      sync_antigravity_mcp_metadata if installed_paths.any?
+
       { name: 'Google Antigravity / Gemini', path: installed_paths.first, success: true } if installed_paths.any?
     rescue StandardError => e
       { name: 'Google Antigravity / Gemini', error: e.message, success: false }
+    end
+
+    def sync_antigravity_mcp_metadata
+      require_relative 'prompts' unless defined?(Tesseract::Prompts)
+      require_relative 'tools' unless defined?(Tesseract::Tools)
+
+      agy_dirs = [
+        Pathname.new(File.expand_path('~/.gemini/antigravity-cli')),
+        Pathname.new(File.expand_path('~/.gemini/antigravity-ide'))
+      ]
+
+      agy_dirs.each do |agy_dir|
+        next unless agy_dir.directory?
+
+        mcp_dir = agy_dir.join('mcp', 'tesseract')
+        FileUtils.mkdir_p(mcp_dir)
+
+        mcp_dir.join('instructions.md').write(Prompts::INSTRUCTIONS, encoding: 'UTF-8')
+
+        Tools::TOOLS_LIST.each do |tool|
+          schema_payload = {
+            name: tool[:name],
+            description: tool[:description],
+            parameters: tool[:inputSchema]
+          }
+          mcp_dir.join("#{tool[:name]}.json").write(JSON.generate(schema_payload), encoding: 'UTF-8')
+        end
+      end
+    rescue StandardError
+      nil
     end
 
     def install_claude_desktop

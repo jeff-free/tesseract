@@ -13,11 +13,11 @@ module Tesseract
           properties: {
             topic: {
               type: 'string',
-              description: 'Topic name to read (e.g. "index", "database-schema", "auth-flow"). Default is "index".'
+              description: 'Topic name to read (e.g. "index", "rule", "database-schema", "auth-flow"). Default is "index".'
             },
             domain: {
               type: 'string',
-              description: 'Domain name ("auto" for current project context, "global" for root vault, or a specific domain name). Defaults to "auto".'
+              description: 'Domain name (e.g. "journapy", "tesseract", "global", or "auto"). IMPORTANT: When working in a known project, explicitly pass the project domain name instead of relying on "auto". Defaults to "auto".'
             }
           },
           required: []
@@ -29,13 +29,14 @@ module Tesseract
                      'CRITICAL: (1) Autonomously invoke this tool whenever resolving non-trivial bugs, establishing architectural patterns/decisions, or discovering gotchas. ' \
                      '(2) Before calling this tool, briefly output 1 sentence in chat explaining what is being saved and why. ' \
                      '(3) Always provide a clear, informative summary explaining the change for user approval prompts and changelogs. ' \
+                     '(4) Always pass the explicit project domain name (e.g. "journapy") when saving project knowledge so it does not fall back to "_global". ' \
                      'Automatically updates index.md and changelog.',
         inputSchema: {
           type: 'object',
           properties: {
             topic: {
               type: 'string',
-              description: 'Topic name (without .md extension, e.g. "api-design", "state-management").'
+              description: 'Topic name (without .md extension, e.g. "api-design", "troubleshooting").'
             },
             summary: {
               type: 'string',
@@ -52,7 +53,11 @@ module Tesseract
             },
             domain: {
               type: 'string',
-              description: 'Target domain ("auto" for current project, "global" for root vault, or specific domain name). Defaults to "auto".'
+              description: 'Target domain (explicit project domain name like "journapy", "global" for cross-project root vault, or "auto"). Always prefer explicit project domain name over "auto". Defaults to "auto".'
+            },
+            append: {
+              type: 'boolean',
+              description: 'Optional. If true, appends the new content to the existing topic file instead of overwriting it. Strongly recommended when adding entries to cumulative topics like "troubleshooting".'
             }
           },
           required: %w[topic summary content]
@@ -202,6 +207,7 @@ module Tesseract
         domain = args['domain'] || 'auto'
         summary = args['summary']
         tags = args['tags'] || []
+        append = args['append'] == true || args['append'].to_s.downcase == 'true'
 
         raise ArgumentError, 'Topic and content are required' unless topic && content
 
@@ -213,7 +219,8 @@ module Tesseract
           content: content,
           domain: domain,
           summary: summary,
-          tags: tags
+          tags: tags,
+          append: append
         )
         format_text(result[:message])
 
@@ -336,29 +343,31 @@ module Tesseract
 
     def self.sync_project_rules(store, targets: ['all'], project_path: nil)
       proj_path = Pathname.new(project_path || store.cwd)
+      proj_store = project_path ? Store.new(domains_root: store.domains_root, cwd: proj_path) : store
 
       # Ensure the active domain has rule.md
-      domain_dir = store.resolve_domain_dir('auto')
-      domain_name = (domain_dir == store.global_dir) ? '_global' : domain_dir.basename.to_s
-      store.ensure_rule_file(domain_dir, domain_name) if store.respond_to?(:ensure_rule_file)
+      domain_dir = proj_store.resolve_domain_dir('auto')
+      domain_name = (domain_dir == proj_store.global_dir) ? '_global' : domain_dir.basename.to_s
+      proj_store.ensure_rule_file(domain_dir, domain_name) if proj_store.respond_to?(:ensure_rule_file)
 
+      target_domain = (domain_name == '_global') ? 'global' : domain_name
       rule_rel_path = 'tesseract/rule.md'
       marker_start = '<!-- tesseract-rule-start -->'
       marker_end = '<!-- tesseract-rule-end -->'
       snippet = <<~MARKDOWN.strip
         #{marker_start}
         ## Tesseract 專案知識庫與即時沉澱規範
-        本專案與個人的 Tesseract 知識庫連動，請遵循以下規範：
-        1. **任務開始前**：若涉及架構決策或專案規範，先閱讀 `#{rule_rel_path}` 或呼叫 `tesseract_read_knowledge(topic: "rule")`（或終端執行 `tesseract read rule`）。
+        本專案與個人的 Tesseract 知識庫連動（專屬 Domain：`#{target_domain}`），請遵循以下規範：
+        1. **任務開始前**：若涉及架構決策或專案規範，先閱讀 `#{rule_rel_path}` 或呼叫 `tesseract_read_knowledge(topic: "rule", domain: "#{target_domain}")`（或終端執行 `tesseract read rule -d #{target_domain}`）。
         2. **結案前主動知識沉澱 (Proactive Knowledge Retention)**：
            每次完成實質任務或除錯後，在回覆使用者前**必須自我檢查**：
-           - 是否解決了未記錄的重大 Bug、相依性衝突或踩坑解法？ ➔ 立即記錄至 `troubleshooting` 主題
+           - 是否解決了未記錄的重大 Bug、相依性衝突或踩坑解法？ ➔ 立即記錄至 `troubleshooting` 主題（請傳入 `append: true` 或先讀取既有內容再追加，避免覆蓋歷史紀錄）
            - 是否確立了重要架構決策或技術約定？ ➔ 立即記錄至 `adr-<name>` 主題
            - 記錄應側重於「為什麼這樣做 (Why)」，而非只是陳列程式碼。
         3. **雙軌通道與透明審查原則 (Dual-Channel & Transparency)**：
-           - **本地優先 (MCP)**：呼叫 `tesseract_save_knowledge`。呼叫前先在對話中簡述內容，並提供具體 `summary` 供審批確認。
+           - **本地優先 (MCP)**：呼叫 `tesseract_save_knowledge`（**務必明確傳入 `domain: "#{target_domain}"`**，避免省略時因 GUI 宿主工作目錄不同而誤寫入 `_global`；僅跨專案通用規範才存至 `"global"`）。呼叫前先在對話中簡述內容，並提供具體 `summary` 供審批確認。
            - **行動端 / 遠端 Fallback (CLI or File)**：若處於無法呼叫 local MCP 的環境（例如手機版 Gemini Spark 操作），改由終端執行純 Ruby CLI：
-             `tesseract save <topic> -s "摘要" -c "Markdown 內容"`
+             `tesseract save <topic> -d #{target_domain} -s "摘要" -c "Markdown 內容"`
              或直接編輯專案內的 `tesseract/<topic>.md` 與 `tesseract/index.md`，確保知識沉澱不中斷。
         #{marker_end}
       MARKDOWN

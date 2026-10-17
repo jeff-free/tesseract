@@ -208,7 +208,7 @@ module Tesseract
       }
     end
 
-    def save_topic(topic:, content:, domain: 'auto', summary: nil, tags: [])
+    def save_topic(topic:, content:, domain: 'auto', summary: nil, tags: [], append: false)
       domain_dir = resolve_domain_dir(domain)
       FileUtils.mkdir_p(domain_dir) unless domain_dir.exist?
 
@@ -221,8 +221,15 @@ module Tesseract
       # Format tags
       formatted_tags = Array(tags).map { |t| t.start_with?('#') ? t : "##{t}" }.uniq
 
-      # Process content to ensure proper title and tags
-      final_content = format_topic_content(clean_topic, content, formatted_tags)
+      existing_content = is_new ? nil : file_path.read(encoding: 'UTF-8')
+      should_append = !is_new && (append || auto_append_topic?(clean_topic, existing_content, content))
+
+      # Process content to ensure proper title and tags (or append cleanly)
+      final_content = if should_append
+                        merge_appended_content(existing_content, content, formatted_tags)
+                      else
+                        format_topic_content(clean_topic, content, formatted_tags)
+                      end
       file_path.write(final_content, encoding: 'UTF-8')
 
       # Ensure index.md exists and is updated
@@ -235,13 +242,19 @@ module Tesseract
       log_desc = summary || (is_new ? "Created #{clean_topic}" : "Updated #{clean_topic}")
       append_changelog(domain_dir, "- #{today}: #{log_desc} (AI)")
 
-      action_desc = is_new ? 'Created' : 'Updated'
+      action_desc = if is_new
+                      'Created'
+                    elsif should_append
+                      'Updated (Appended)'
+                    else
+                      'Updated'
+                    end
       msg_details = [
         "Successfully saved '#{clean_topic}' to #{domain_name} domain (#{action_desc}).",
         ("- Summary: #{log_desc}" if summary),
         ("- Tags: #{formatted_tags.join(' ')}" if formatted_tags.any?),
         "- Path: #{file_path}",
-        "- Updated index.md and changelog."
+        '- Updated index.md and changelog.'
       ].compact.join("\n")
 
       {
@@ -249,6 +262,7 @@ module Tesseract
         domain: domain_name,
         topic: clean_topic,
         is_new: is_new,
+        appended: should_append,
         path: file_path.to_s,
         message: msg_details
       }
@@ -475,6 +489,44 @@ module Tesseract
       end
 
       res.join
+    end
+
+    def auto_append_topic?(clean_topic, existing_content, new_content)
+      return false unless clean_topic == 'troubleshooting'
+      return false if existing_content.nil? || existing_content.strip.empty?
+      return false if new_content.to_s.include?(existing_content.strip)
+
+      existing_h2s = existing_content.lines.select { |l| l.start_with?('## ') }.map(&:strip)
+      if existing_h2s.any?
+        existing_h2s.none? { |h2| new_content.to_s.include?(h2) }
+      else
+        existing_content.strip.length > 50
+      end
+    end
+
+    def merge_appended_content(existing_content, new_content, tags)
+      raw_new = new_content.to_s.strip
+      return existing_content if raw_new.empty? || existing_content.include?(raw_new)
+
+      existing_lines = existing_content.lines
+      existing_h1 = existing_lines.find { |l| l.start_with?('# ') }&.strip
+
+      new_lines = raw_new.lines
+      if new_lines.first&.start_with?('# ')
+        first_h1 = new_lines.first.strip
+        if existing_h1 && first_h1.downcase == existing_h1.downcase
+          new_lines.shift
+          new_lines.shift while new_lines.first && new_lines.first.strip.empty?
+        else
+          # Demote standalone H1 entry title to H2 section heading
+          new_lines[0] = "## #{first_h1.sub(/^#\s+/, '')}\n"
+        end
+      end
+
+      missing_tags = Array(tags).reject { |t| existing_content.include?(t) || raw_new.include?(t) }
+      tag_line = missing_tags.any? ? "\n#{missing_tags.join(' ')}\n" : ''
+
+      "#{existing_content.rstrip}\n\n---\n\n#{new_lines.join.strip}#{tag_line}\n"
     end
 
     def update_index_files_section(domain_dir)

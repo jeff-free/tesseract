@@ -600,8 +600,14 @@ module Tesseract
 
     def cmd_sync_rules(args)
       require_relative 'tools' unless defined?(Tesseract::Tools)
+      project_path = nil
+      parser = OptionParser.new do |opts|
+        opts.banner = '用法: tesseract sync-rules [targets...] [-p PATH]'
+        opts.on('-p', '--path PATH', '指定要同步規則的專案目錄路徑') { |v| project_path = v }
+      end
+      parser.parse!(args)
       targets = args.empty? ? ['all'] : args
-      res = Tools.sync_project_rules(@store, targets: targets)
+      res = Tools.sync_project_rules(@store, targets: targets, project_path: project_path)
       puts res[:message]
     end
 
@@ -611,7 +617,8 @@ module Tesseract
         content: nil,
         file: nil,
         tags: [],
-        domain: 'auto'
+        domain: 'auto',
+        append: false
       }
 
       parser = OptionParser.new do |opts|
@@ -621,6 +628,7 @@ module Tesseract
         opts.on('-f', '--file PATH', '從指定檔案讀取 Markdown 內容') { |v| options[:file] = v }
         opts.on('-t', '--tags TAGS', '標籤列表，以逗號分隔 (如 "#auth,#security")') { |v| options[:tags] = v.split(',').map(&:strip) }
         opts.on('-d', '--domain DOMAIN', '目標 domain ("auto", "global", 或指定名稱)') { |v| options[:domain] = v }
+        opts.on('-a', '--append', '將內容追加至現有筆記末尾而非整檔覆寫（適合 troubleshooting 等累積型主題）') { options[:append] = true }
         opts.on('-h', '--help', '顯示此說明') do
           puts opts
           exit 0
@@ -665,7 +673,8 @@ module Tesseract
         content: content,
         domain: options[:domain],
         summary: summary,
-        tags: options[:tags]
+        tags: options[:tags],
+        append: options[:append]
       )
 
       puts res[:message]

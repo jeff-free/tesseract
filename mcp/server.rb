@@ -157,7 +157,8 @@ module Tesseract
         serverInfo: {
           name: SERVER_NAME,
           version: SERVER_VERSION
-        }
+        },
+        instructions: Prompts::INSTRUCTIONS
       })
     end
 

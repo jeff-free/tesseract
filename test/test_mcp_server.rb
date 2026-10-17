@@ -206,6 +206,40 @@ class TestTesseractStore < Minitest::Test
     found = prompts.find { |p| p[:name] == 'tesseract-hyperfold' || p[:name] == 'tesseract_hyperfold_guide' }
     refute_nil found, 'Dynamic skills should be exposed in Prompts.list_prompts'
   end
+
+  def test_save_topic_append_and_troubleshooting_auto_append
+    # 1. Initial troubleshooting note
+    @store.save_topic(
+      domain: 'global',
+      topic: 'troubleshooting',
+      content: "# Backend Troubleshooting\n\n## 1. First Bug\nRoot cause of first bug.",
+      tags: ['#troubleshooting'],
+      summary: 'Recorded first bug'
+    )
+
+    # 2. Saving a new single entry to 'troubleshooting' without reading/including old H2s
+    #    should auto-append instead of wiping the previous entry
+    res = @store.save_topic(
+      domain: 'global',
+      topic: 'troubleshooting',
+      content: "# Second Bug\nRoot cause of second bug.",
+      tags: ['#bug2'],
+      summary: 'Recorded second bug'
+    )
+    assert res[:appended], 'Saving a single new entry to troubleshooting should auto-append'
+
+    read_res = @store.read_topic(domain: 'global', topic: 'troubleshooting')
+    assert_includes read_res[:content], '## 1. First Bug'
+    assert_includes read_res[:content], '## Second Bug'
+    assert_includes read_res[:content], '#bug2'
+
+    # 3. Explicit append: true on any topic
+    @store.save_topic(domain: 'global', topic: 'notes', content: "Initial note line.", summary: 'Init')
+    @store.save_topic(domain: 'global', topic: 'notes', content: "## Follow-up\nAppended line.", summary: 'Append', append: true)
+    notes_content = @store.read_topic(domain: 'global', topic: 'notes')[:content]
+    assert_includes notes_content, 'Initial note line.'
+    assert_includes notes_content, 'Appended line.'
+  end
 end
 
 class TestMCPInstaller < Minitest::Test
@@ -254,6 +288,9 @@ class TestTesseractCLI < Minitest::Test
   def setup
     @tmpdir = Dir.mktmpdir('tesseract_cli_test_')
     @project_dir = Dir.mktmpdir('tesseract_cli_proj_')
+    @fake_home = Dir.mktmpdir('tesseract_cli_home_')
+    @old_home = ENV['HOME']
+    ENV['HOME'] = @fake_home
     @old_env = ENV['TESSERACT_DOMAINS']
     ENV['TESSERACT_DOMAINS'] = @tmpdir
     @old_stdin = $stdin
@@ -263,8 +300,10 @@ class TestTesseractCLI < Minitest::Test
   def teardown
     $stdin = @old_stdin
     ENV['TESSERACT_DOMAINS'] = @old_env
+    ENV['HOME'] = @old_home
     FileUtils.remove_entry(@tmpdir) if File.exist?(@tmpdir)
     FileUtils.remove_entry(@project_dir) if File.exist?(@project_dir)
+    FileUtils.remove_entry(@fake_home) if @fake_home && File.exist?(@fake_home)
   end
 
   def test_cli_new_and_status
@@ -380,11 +419,12 @@ class TestTesseractCLI < Minitest::Test
     res = Tesseract::Tools.sync_project_rules(store, project_path: existing_repo)
     assert res[:success]
 
-    # Verify CLAUDE.md preserved build command and got marker block
+    # Verify CLAUDE.md preserved build command and got marker block with explicit domain
     claude_content = File.read(claude_file)
     assert_includes claude_content, 'npm run build'
     assert_includes claude_content, '<!-- tesseract-rule-start -->'
     assert_includes claude_content, 'tesseract/rule.md'
+    assert_includes claude_content, 'domain: "rule-test-proj"'
     assert_includes claude_content, '<!-- tesseract-rule-end -->'
 
     # Verify .cursorrules was created
@@ -656,6 +696,7 @@ class TestMCPProtocolIntegration < Minitest::Test
     # 1. Initialize response
     init_res = responses.find { |r| r['id'] == 1 }
     assert_equal 'tesseract-mcp', init_res['result']['serverInfo']['name']
+    assert_includes init_res['result']['instructions'], 'Tesseract Knowledge Base Guidelines'
 
     # 2. Tools list response
     tools_res = responses.find { |r| r['id'] == 2 }
