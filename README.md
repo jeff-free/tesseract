@@ -259,8 +259,8 @@ tesseract link
    ```bash
    tesseract sync-rules
    ```
-   *（也可以指定目標，如：`tesseract sync-rules claude cursor`）*
-   - 自動在專案根目錄的 `CLAUDE.md`、`.cursorrules`、`GEMINI.md`、`.windsurfrules` 嵌入指針。
+   *（預設同步通用標準 `AGENTS.md` 與 `CLAUDE.md`；亦可手動指定目標，如：`tesseract sync-rules agents claude cursor`）*
+   - 自動在專案根目錄的 `AGENTS.md`（支援 Antigravity / Gemini、Cursor、Windsurf、Codex 等）與 `CLAUDE.md` 嵌入指針，並自動清理舊版僅含自動指針的冗餘 `.cursorrules` / `.windsurfrules` / `GEMINI.md`。
    - **非破壞性更新**：以標記區塊（`<!-- tesseract-rule-start -->`）插入，100% 保留現有檔案中原本的 build、test 等指令。
    - 所有的 AI Agent 進到該專案時，都會自然遵循 `tesseract/rule.md` 的專案規範！
 
@@ -334,11 +334,13 @@ Tesseract MCP Server 內建以下標準工具，AI Agent 會在對話與認知�
 
 ---
 
-## 與 Obsidian / PKM 整合
+## 與 Obsidian / PKM 整合（支援 macOS 與 iOS 雙端同步）
 
-1. 打開 **Obsidian**。
-2. 點擊 **Open folder as vault**，選擇：
-   `~/Library/Mobile Documents/com~apple~CloudDocs/Tesseract`
+Tesseract 預設將 Vault 建立於 Obsidian 官方的 iCloud 專屬容器目錄下，確保 **macOS 桌機版**與 **iOS / iPadOS 手機版**皆可透過免費的 iCloud Drive 原生同步並直接讀取：
+
+1. **iOS / iPadOS 手機版**：打開 **Obsidian** App，首頁即會自動偵測並列出 **`Tesseract`** Vault（位於 `iCloud Drive > Obsidian > Tesseract`），點選即可直接開啟。
+2. **macOS 桌機版**：打開 **Obsidian**，點擊 **Open folder as vault**（可按 `Cmd + Shift + G` 輸入路徑），選擇：
+   `~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Tesseract`
 3. 您的知識庫會呈現：
    - **`_global/`**：置頂於最上方，存放通用規則、心法與雲端 Skills（`_global/skills/`）。
    - **各專案資料夾**：存放特定專案的筆記。

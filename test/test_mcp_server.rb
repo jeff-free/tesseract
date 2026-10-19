@@ -274,6 +274,26 @@ class TestMCPInstaller < Minitest::Test
       assert s.key?(:detected)
     end
   end
+
+  def test_install_global_rules_symlinks_global_rule
+    FileUtils.mkdir_p(File.join(@tmpdir, '.gemini'))
+    FileUtils.mkdir_p(File.join(@tmpdir, '.claude'))
+    vault_dir = File.join(@tmpdir, 'vault')
+    store = Tesseract::Store.new(domains_root: vault_dir, cwd: @tmpdir)
+
+    results = @installer.install_global_rules(store)
+    assert_equal 2, results.size
+    assert results.all? { |r| r[:success] }
+
+    gemini_rule = File.join(@tmpdir, '.gemini', 'config', 'GEMINI.md')
+    claude_rule = File.join(@tmpdir, '.claude', 'CLAUDE.md')
+    expected_source = File.realpath(File.join(vault_dir, '_global', 'rule.md'))
+
+    assert File.symlink?(gemini_rule)
+    assert File.symlink?(claude_rule)
+    assert_equal expected_source, File.realpath(gemini_rule)
+    assert_equal expected_source, File.realpath(claude_rule)
+  end
 end
 
 class TestTesseractCLI < Minitest::Test
@@ -408,9 +428,13 @@ class TestTesseractCLI < Minitest::Test
     existing_repo = File.join(@project_dir, 'rule-test-proj')
     FileUtils.mkdir_p(existing_repo)
 
-    # Pre-populate CLAUDE.md with custom build command
+    # Pre-populate CLAUDE.md with custom build command (should be migrated into AGENTS.md and removed)
     claude_file = File.join(existing_repo, 'CLAUDE.md')
     File.write(claude_file, "# Custom Project\n\n- Build: npm run build\n")
+
+    # Pre-populate a legacy pointer-only .cursorrules file (should be cleaned up in default mode)
+    legacy_cursor = File.join(existing_repo, '.cursorrules')
+    File.write(legacy_cursor, "<!-- tesseract-rule-start -->\nold pointer\n<!-- tesseract-rule-end -->\n")
 
     store = Tesseract::Store.new(domains_root: @tmpdir, cwd: existing_repo)
     store.create_domain('rule-test-proj')
@@ -419,24 +443,26 @@ class TestTesseractCLI < Minitest::Test
     res = Tesseract::Tools.sync_project_rules(store, project_path: existing_repo)
     assert res[:success]
 
-    # Verify CLAUDE.md preserved build command and got marker block with explicit domain
-    claude_content = File.read(claude_file)
-    assert_includes claude_content, 'npm run build'
-    assert_includes claude_content, '<!-- tesseract-rule-start -->'
-    assert_includes claude_content, 'tesseract/rule.md'
-    assert_includes claude_content, 'domain: "rule-test-proj"'
-    assert_includes claude_content, '<!-- tesseract-rule-end -->'
+    # Verify universal AGENTS.md was created by default, migrated custom build command, and got marker block
+    agents_file = File.join(existing_repo, 'AGENTS.md')
+    assert File.file?(agents_file)
+    agents_content = File.read(agents_file)
+    assert_includes agents_content, 'npm run build'
+    assert_includes agents_content, '<!-- tesseract-rule-start -->'
+    assert_includes agents_content, 'tesseract/rule.md'
+    assert_includes agents_content, 'domain: "rule-test-proj"'
+    assert_includes agents_content, '<!-- tesseract-rule-end -->'
 
-    # Verify .cursorrules was created
-    cursor_file = File.join(existing_repo, '.cursorrules')
-    assert File.file?(cursor_file)
-    assert_includes File.read(cursor_file), 'tesseract/rule.md'
+    # Verify legacy CLAUDE.md, .cursorrules, and GEMINI.md do not clutter the project root
+    refute File.file?(claude_file)
+    refute File.file?(legacy_cursor)
+    refute File.file?(File.join(existing_repo, 'GEMINI.md'))
 
     # Test idempotency - running sync again replaces marker block without duplicating
     Tesseract::Tools.sync_project_rules(store, project_path: existing_repo)
-    claude_content_v2 = File.read(claude_file)
-    assert_equal 1, claude_content_v2.scan('<!-- tesseract-rule-start -->').size
-    assert_includes claude_content_v2, 'npm run build'
+    agents_content_v2 = File.read(agents_file)
+    assert_equal 1, agents_content_v2.scan('<!-- tesseract-rule-start -->').size
+    assert_includes agents_content_v2, 'npm run build'
   end
 
   def test_cli_sync_rules_command
@@ -494,9 +520,10 @@ class TestTesseractCLI < Minitest::Test
     assert File.symlink?(symlink_path)
     assert_equal File.realpath(domain_dir), File.realpath(symlink_path)
 
-    # 4. Project AI rules synced
-    assert File.file?(File.join(proj, 'CLAUDE.md'))
-    assert_includes File.read(File.join(proj, 'CLAUDE.md')), 'tesseract/rule.md'
+    # 4. Project AI rules synced (only AGENTS.md by default)
+    assert File.file?(File.join(proj, 'AGENTS.md'))
+    assert_includes File.read(File.join(proj, 'AGENTS.md')), 'tesseract/rule.md'
+    refute File.file?(File.join(proj, 'CLAUDE.md'))
   end
 
   def test_cli_init_with_domain_arg

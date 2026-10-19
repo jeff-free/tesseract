@@ -124,14 +124,14 @@ module Tesseract
       },
       {
         name: 'tesseract_sync_project_rules',
-        description: 'Synchronize project-level AI config files (CLAUDE.md, .cursorrules, GEMINI.md, .windsurfrules) with safe pointer to tesseract/rule.md.',
+        description: 'Synchronize project-level AI config files (AGENTS.md, CLAUDE.md, and optional GEMINI.md, .cursorrules, .windsurfrules) with safe pointer to tesseract/rule.md.',
         inputSchema: {
           type: 'object',
           properties: {
             targets: {
               type: 'array',
               items: { type: 'string' },
-              description: 'AI targets to sync: "claude", "cursor", "gemini", "windsurf", or "all". Defaults to ["all"].'
+              description: 'AI targets to sync: "agents", "claude", "gemini", "cursor", "windsurf", or "all" (defaults to universal AGENTS.md + CLAUDE.md, while cleaning up redundant legacy pointer-only files). Defaults to ["all"].'
             },
             project_path: {
               type: 'string',
@@ -335,11 +335,14 @@ module Tesseract
     end
 
     AI_TARGET_FILES = {
+      'agents' => 'AGENTS.md',
       'claude' => 'CLAUDE.md',
-      'cursor' => '.cursorrules',
       'gemini' => 'GEMINI.md',
+      'cursor' => '.cursorrules',
       'windsurf' => '.windsurfrules'
     }.freeze
+
+    DEFAULT_PRIMARY_TARGETS = %w[agents].freeze
 
     def self.sync_project_rules(store, targets: ['all'], project_path: nil)
       proj_path = Pathname.new(project_path || store.cwd)
@@ -373,19 +376,48 @@ module Tesseract
       MARKDOWN
 
       raw_targets = Array(targets).flatten.map(&:to_s).map(&:downcase)
-      selected = if raw_targets.empty? || raw_targets.include?('all')
-                   AI_TARGET_FILES.keys
+      default_mode = raw_targets.empty? || raw_targets.include?('all')
+
+      selected = if default_mode
+                   DEFAULT_PRIMARY_TARGETS
                  else
                    raw_targets & AI_TARGET_FILES.keys
                  end
 
       synced = []
+      migrated_blocks = []
+
+      # In default mode, inspect existing legacy/tool-specific files (CLAUDE.md, GEMINI.md, .cursorrules, .windsurfrules):
+      # - Extract any custom user instructions outside the marker block to migrate into AGENTS.md
+      # - Remove the legacy files so the project root stays clean with only AGENTS.md
+      if default_mode
+        (AI_TARGET_FILES.keys - DEFAULT_PRIMARY_TARGETS).each do |key|
+          filename = AI_TARGET_FILES[key]
+          file_path = proj_path.join(filename)
+          next unless file_path.file?
+
+          content = file_path.read(encoding: 'UTF-8')
+          remaining = content.sub(/#{Regexp.escape(marker_start)}.*?#{Regexp.escape(marker_end)}/m, '').strip
+          file_path.unlink
+          if remaining.empty?
+            synced << "#{filename} (removed redundant file; superseded by AGENTS.md)"
+          else
+            migrated_blocks << remaining
+            synced << "#{filename} (migrated custom rules to AGENTS.md and removed)"
+          end
+        end
+      end
+
       selected.each do |key|
         filename = AI_TARGET_FILES[key]
         file_path = proj_path.join(filename)
 
         if file_path.file?
           content = file_path.read(encoding: 'UTF-8')
+          if key == 'agents' && migrated_blocks.any?
+            extra = migrated_blocks.reject { |b| content.include?(b) }.join("\n\n")
+            content = "#{extra}\n\n#{content}" unless extra.empty?
+          end
           new_content = if content.include?(marker_start) && content.include?(marker_end)
                           content.sub(/#{Regexp.escape(marker_start)}.*?#{Regexp.escape(marker_end)}/m, snippet)
                         else
@@ -394,7 +426,8 @@ module Tesseract
           file_path.write(new_content, encoding: 'UTF-8')
           synced << "#{filename} (updated)"
         else
-          file_path.write("#{snippet}\n", encoding: 'UTF-8')
+          prefix = (key == 'agents' && migrated_blocks.any?) ? "#{migrated_blocks.join("\n\n")}\n\n" : ''
+          file_path.write("#{prefix}#{snippet}\n", encoding: 'UTF-8')
           synced << "#{filename} (created)"
         end
       end

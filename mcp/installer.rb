@@ -86,6 +86,42 @@ module Tesseract
       results
     end
 
+    # Symlinks _global/rule.md into machine-level global AI rule files (~/.gemini/config/GEMINI.md and ~/.claude/CLAUDE.md)
+    def install_global_rules(store)
+      return [] unless store
+
+      store.ensure_root_exists!
+      global_rule = store.global_dir.join('rule.md')
+      return [] unless global_rule.file?
+
+      results = []
+
+      # 1. Google Antigravity / Gemini Global Rule (~/.gemini/config/GEMINI.md)
+      if File.exist?(File.expand_path('~/.gemini'))
+        gemini_root = Pathname.new(File.expand_path('~/.gemini/config'))
+        FileUtils.mkdir_p(gemini_root)
+        target = gemini_root.join('GEMINI.md')
+        results << link_global_rule_file(global_rule, target, 'Google Antigravity / Gemini')
+      end
+
+      # 2. Claude Code Global Rule (~/.claude/CLAUDE.md)
+      claude_root = Pathname.new(File.expand_path('~/.claude'))
+      if claude_root.exist?
+        target = claude_root.join('CLAUDE.md')
+        results << link_global_rule_file(global_rule, target, 'Claude Code')
+      end
+
+      results
+    end
+
+    def link_global_rule_file(source_file, target_path, target_name)
+      target_path.unlink if target_path.symlink? || target_path.file?
+      File.symlink(source_file.to_s, target_path.to_s)
+      { target: target_name, path: target_path.to_s, source: source_file.to_s, success: true }
+    rescue StandardError => e
+      { target: target_name, path: target_path.to_s, error: e.message, success: false }
+    end
+
     # Checks registration status across all AI tools
     def check_status
       [

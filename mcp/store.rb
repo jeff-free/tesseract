@@ -8,7 +8,7 @@ require 'date'
 module Tesseract
   class Store
     DEFAULT_ICLOUD_PATH = File.expand_path(
-      '~/Library/Mobile Documents/com~apple~CloudDocs/Tesseract'
+      '~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Tesseract'
     ).freeze
     GLOBAL_DIR_NAME = '_global'
 

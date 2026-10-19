@@ -400,7 +400,16 @@ module Tesseract
       end
 
       puts ''
-      puts '── 2. 自動派發雲端 AI Skills ──────────────────'
+      puts '── 2. 自動派發雲端 AI Skills 與全域規範 ────────'
+      rule_results = installer.install_global_rules(store)
+      rule_results.each do |res|
+        if res[:success]
+          puts "  ✓ 已連結全域規範 [_global/rule.md] 至 #{res[:target]} (#{res[:path]})"
+        else
+          puts "  ✗ 連結全域規範至 #{res[:target]} 失敗: #{res[:error]}"
+        end
+      end
+
       skill_results = installer.install_skills(store)
       if skill_results.empty?
         puts '  （雲端 skills 已就緒）'
@@ -531,7 +540,16 @@ module Tesseract
       end
 
       puts ''
-      puts '── 自動派發雲端 AI Skills ──────────────────'
+      puts '── 自動派發雲端 AI Skills 與全域規範 ────────'
+      rule_results = installer.install_global_rules(@store)
+      rule_results.each do |res|
+        if res[:success]
+          puts "  ✓ 已連結全域規範 [_global/rule.md] 至 #{res[:target]} (#{res[:path]})"
+        else
+          puts "  ✗ 連結全域規範至 #{res[:target]} 失敗: #{res[:error]}"
+        end
+      end
+
       skill_results = installer.install_skills(@store)
       if skill_results.empty?
         puts '  （雲端 skills 已就緒）'
@@ -758,7 +776,7 @@ module Tesseract
           init [domain] [--global]     初始化知識庫並連結當前專案 (自動建立 symlink、rule.md 與同步 AI 規範)
           link [路徑] [domain]         將既有專案連結到知識 domain (建立 symlink，預設同資料夾名)
           new <名稱> [路徑]            建立專案資料夾 + iCloud 知識庫 + 連結（一步完成）
-          sync-rules [targets]         同步專案各 AI 設定檔（CLAUDE.md、.cursorrules 等）指向 tesseract/rule.md
+          sync-rules [targets]         同步專案 AI 設定檔（預設 AGENTS.md 與 CLAUDE.md）指向 tesseract/rule.md
           config                       查看與管理 Tesseract 設定 (MCP 狀態與管理)
           status                       列出當前專案、所有 domain 與已連結專案狀態
           mcp                          啟動 Tesseract MCP Server (Stdio JSON-RPC)
